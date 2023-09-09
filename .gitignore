@@ -26,6 +26,7 @@ node_modules/
 bower_components
 
 playground/
+*.mpk
 
 .npm
 .eslintcache

@@ -1,27 +1,55 @@
 import ctypes
 
-SendInput = ctypes.windll.user32.SendInput
+# Key event flags
+KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_SCANCODE = 0x0008
 
-# Constants
-KEYEVENTF_KEYUP = 0x2
-KEYEVENTF_SCANCODE = 0x8
+# C struct definitions
+PUL = ctypes.POINTER(ctypes.c_ulong)
+
+class KeyBdInput(ctypes.Structure):
+    _fields_ = [("wVk", ctypes.c_ushort),
+                ("wScan", ctypes.c_ushort),
+                ("dwFlags", ctypes.c_ulong),
+                ("time", ctypes.c_ulong),
+                ("dwExtraInfo", PUL)]
+
+class HardwareInput(ctypes.Structure):
+    _fields_ = [("uMsg", ctypes.c_ulong),
+                ("wParamL", ctypes.c_short),
+                ("wParamH", ctypes.c_ushort)]
+
+class MouseInput(ctypes.Structure):
+    _fields_ = [("dx", ctypes.c_long),
+                ("dy", ctypes.c_long),
+                ("mouseData", ctypes.c_ulong),
+                ("dwFlags", ctypes.c_ulong),
+                ("time", ctypes.c_ulong),
+                ("dwExtraInfo", PUL)]
+
+class Input_I(ctypes.Union):
+    _fields_ = [("ki", KeyBdInput),
+                ("mi", MouseInput),
+                ("hi", HardwareInput)]
+
+class Input(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_ulong),
+                ("ii", Input_I)]
 
 def press_key(hex_key_code):
     extra = ctypes.c_ulong(0)
-    ii_ = ctypes.c_input(1, ctypes.c_void_p(0))
-    
-    ii_.ki = ctypes.keybd_input(0, hex_key_code, KEYEVENTF_SCANCODE, 0, ctypes.pointer(extra))
-    x = ctypes.input((ii_,))
-    SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
+    ii_ = Input_I()
+    ii_.ki = KeyBdInput(0, hex_key_code, KEYEVENTF_SCANCODE, 0, ctypes.pointer(extra))
+    x = Input(ctypes.c_ulong(1), ii_)
+    ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
 def release_key(hex_key_code):
     extra = ctypes.c_ulong(0)
-    ii_ = ctypes.c_input(1, ctypes.c_void_p(0))
-    
-    ii_.ki = ctypes.keybd_input(0, hex_key_code, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP, 0, ctypes.pointer(extra))
-    x = ctypes.input((ii_,))
-    SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
+    ii_ = Input_I()
+    ii_.ki = KeyBdInput(0, hex_key_code, KEYEVENTF_KEYUP | KEYEVENTF_SCANCODE, 0, ctypes.pointer(extra))
+    x = Input(ctypes.c_ulong(1), ii_)
+    ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
-# Example of pressing and releasing the 'A' key using its scan code
+# Example: Press and release the 'A' key using its scan code
 press_key(0x1E)
 release_key(0x1E)

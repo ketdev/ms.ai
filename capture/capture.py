@@ -17,7 +17,7 @@ import msgpack
 ## ==================================================================
 
 FILENAME = 'game_data.mpk'
-TARGET_WINDOW_NAME = "Workspace"
+TARGET_WINDOW_NAME = "MapleStory"
 TARGET_FPS = 30
 GRAYSCALE = True
 SCALE = 0.3
@@ -72,7 +72,7 @@ def get_window_bounds(title=None):
         system_events = app("System Events")
         for process in system_events.processes():
             for window in process.windows():
-                if (title and title in window.name()) or not title:
+                if (title and title == window.name()) or not title:
                     position = window.position.get()
                     size = window.size.get()
                     bounds[window.name()] = {
@@ -90,7 +90,7 @@ def get_window_bounds(title=None):
         def win_get_bounds(hwnd, _):
             if win32gui.IsWindowVisible(hwnd):
                 rect = win32gui.GetWindowRect(hwnd)
-                if (title and title in win32gui.GetWindowText(hwnd)) or not title:
+                if (title and title == win32gui.GetWindowText(hwnd)) or not title:
                     bounds[win32gui.GetWindowText(hwnd)] = {
                         "position": {
                             "x": rect[0],
@@ -287,7 +287,7 @@ def main():
     # find title that includes our target
     found_title = None
     for title in titles:
-        if TARGET_WINDOW_NAME in title:
+        if TARGET_WINDOW_NAME == title:
             found_title = title
             break
     print(f"Found title: {found_title}")
