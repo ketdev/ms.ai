@@ -1,15 +1,15 @@
 import pygame
 import msgpack
 import io
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 # Constants
-FILENAME = 'game_data.mpk'
+FILENAME = 'game_data_validate.mpk'
 TARGET_FPS = 30
 SCALE = 0.3
 MAC_SCALE = 0.5
 
-VISUAL_SCALE = 0.5
+VISUAL_SCALE = 2
 
 class InputType:
     MOUSE = 0
