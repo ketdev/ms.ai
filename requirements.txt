@@ -1,3 +1,7 @@
 mss
 Pillow
 pynput
+appscript
+pywin32
+msgpack
+pygame
