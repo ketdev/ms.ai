@@ -4,7 +4,7 @@ import io
 from PIL import Image
 
 # Constants
-FILENAME = 'game_data_validate.mpk'
+FILENAME = 'game_data.mpk'
 TARGET_FPS = 30
 SCALE = 0.3
 MAC_SCALE = 0.5

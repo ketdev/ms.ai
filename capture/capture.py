@@ -4,20 +4,20 @@ import time
 import threading
 import queue
 import mss
+import msgpack
 from PIL import Image
 from pynput import mouse, keyboard
 if sys.platform == "darwin":  # macOS
     from appscript import app
 elif sys.platform == "win32":  # Windows
     import win32gui
-import msgpack
 
 ## ==================================================================
 ## Constants
 ## ==================================================================
 
 FILENAME = 'game_data.mpk'
-TARGET_WINDOW_NAME = "MapleStory"
+TARGET_WINDOW_NAME = "Sourcetree"
 TARGET_FPS = 30
 GRAYSCALE = True
 SCALE = 0.3
@@ -161,7 +161,6 @@ def start_capture_screen(bounds, fps):
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-
 ## ==================================================================
 ## Get Mouse and Keyboard Actions
 ## ==================================================================
@@ -173,10 +172,8 @@ def on_move(x, y):
     # Calculate relative position
     x = x - window_bound["position"]["x"]
     y = y - window_bound["position"]["y"]
-
-    # # Print pointer position
-    # print('Pointer moved to {0}'.format((x, y)))
     # mouse_actions.put((KeyState.MOVE, x, y))
+    return True
 
 def on_click(x, y, button, pressed):
     if stop_capture:
@@ -184,9 +181,6 @@ def on_click(x, y, button, pressed):
     # Calculate relative position
     x = x - window_bound["position"]["x"]
     y = y - window_bound["position"]["y"]
-
-    # # Print click information
-    # print('{0} at {1}'.format('Pressed' if pressed else 'Released', (x, y)))
     if pressed:
         input_actions.put((time.time(), InputType.MOUSE, KeyState.PRESS, x, y, button.name))
     else:
@@ -198,8 +192,6 @@ def on_scroll(x, y, dx, dy):
     # Calculate relative position
     x = x - window_bound["position"]["x"]
     y = y - window_bound["position"]["y"]
-    # # Print scroll direction
-    # print('Scrolled {0} at {1}'.format('down' if dy < 0 else 'up',(x, y)))
     input_actions.put((time.time(), InputType.MOUSE, KeyState.SCROLL, x, y, dx, dy))
 
 # Keyboard listener
@@ -211,14 +203,6 @@ def on_key_press(key):
     if key == keyboard.Key.esc:
         stop_capture = True
         return False
-    # # Print key pressed
-    # try:
-    #     print('alphanumeric key {0} pressed'.format(
-    #         key.char))
-    # except AttributeError:
-    #     print('special key {0} pressed'.format(
-    #         key))
-    # use char or name if char doesn't exist
     try:
         input_actions.put((time.time(), InputType.KEYBOARD, KeyState.PRESS, key.char))
     except AttributeError:
@@ -227,20 +211,16 @@ def on_key_press(key):
 def on_key_release(key):
     if stop_capture:
         return False
-    # # Print key released
-    # print('{0} released'.format(key))
-    # use char or name if char doesn't exist
     try:
         input_actions.put((time.time(), InputType.KEYBOARD, KeyState.RELEASE, key.char))
     except AttributeError:
         input_actions.put((time.time(), InputType.KEYBOARD, KeyState.RELEASE, key.name))
 
-# Function to start mouse listener
+# Start mouse and keyboard listeners
 def start_mouse_listener():
     with mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
         listener.join()
 
-# Function to start keyboard listener
 def start_keyboard_listener():
     with keyboard.Listener(on_press=on_key_press, on_release=on_key_release) as listener:
         listener.join()
