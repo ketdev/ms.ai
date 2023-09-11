@@ -91,11 +91,14 @@ class DQN:
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
-    def act(self, state):
+    def predict(self, state):
+        return self.model.predict(state)[0]
+
+    def act(self, prediction):
+        # Epsilon-greedy action selection
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
-        act_values = self.model.predict(state)
-        return np.argmax(act_values[0])
+        return np.argmax(prediction)
 
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)

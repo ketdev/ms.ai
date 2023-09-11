@@ -17,13 +17,16 @@ elif sys.platform == "win32":  # Windows
 ## Constants
 ## ==================================================================
 
-TARGET_WINDOW_NAME = "MapleStory"
+TARGET_WINDOW_NAME = "screen-test.png"
 GRAYSCALE = True
 SCALE = 0.3
 TARGET_FPS = 30
 
 FRAMES_PER_STEP = 4
-EXPERIENCE_BAR_BOTTOM_OFFSET = 4
+EXPERIENCE_BAR_BOTTOM_OFFSET = 4 # pixels from bottom of screen
+DISPLAY_EXP_BAR_HEIGHT = 20 
+DISPLAY_ACTION_PROB_HEIGHT = 100
+
 
 class Actions:
     IDLE = 0
@@ -95,7 +98,7 @@ def is_yellow_green(pixel):
 
     return blue_to_green_ratio < 0.7 and green_value > 0.5
 
-def get_experience(screenshot, row_number):
+def get_experience(screenshot, bottom_offset):
     
     # Convert bytes to numpy array
     frame_width = screenshot.width
@@ -108,8 +111,9 @@ def get_experience(screenshot, row_number):
     data = np.frombuffer(data, dtype=np.uint8)
     data = np.reshape(data, (frame_height, frame_width, 3))
     data = np.transpose(data, (1, 0, 2))
-
+    
     # read progress bar from image
+    row_number = frame_height - bottom_offset
     row = data[:, row_number, :]
 
     # turn yellow pixels into white and everything else into black
@@ -134,7 +138,7 @@ def get_new_frame(x, y, w, h, scale):
     while True:
         screenshot = next(capture_screen(x, y, w, h))
 
-        experience = get_experience(screenshot, frame_height - EXPERIENCE_BAR_BOTTOM_OFFSET)
+        experience = get_experience(screenshot, EXPERIENCE_BAR_BOTTOM_OFFSET)
 
         # Detect display scaling
         display_scale_down = w / screenshot.width
@@ -215,18 +219,58 @@ def train_agent():
 
 def initialize_display(width, height):
     pygame.init()
-    screen = pygame.display.set_mode((width, height))
+    total_height = height + DISPLAY_EXP_BAR_HEIGHT + DISPLAY_ACTION_PROB_HEIGHT
+    screen = pygame.display.set_mode((width, total_height))
     pygame.display.set_caption('Captured Frames')
     return screen
 
-def display_frames(screen, frames):
+def draw_experience_bar(screen, experience, y):
+    """Draw the experience bar at the bottom of the screen."""
+    bar_width = int(screen.get_width() * experience)
+    pygame.draw.rect(screen, (255, 255, 0), (0, y, bar_width, DISPLAY_EXP_BAR_HEIGHT))
+
+def draw_action_probabilities(screen, act_vector, action_taken, y):
+    """Draw action probabilities as vertical bars."""
+    # minmax normalize the action vector
+    min_val, max_val = np.min(act_vector), np.max(act_vector)
+    if max_val - min_val != 0:  # Avoid divide by zero
+        probabilities = (act_vector - min_val) / (max_val - min_val)
+    else:
+        probabilities = act_vector
+    # make sure the sum of the probabilities is 1
+    sum = np.sum(probabilities)
+    probabilities /= sum if sum != 0 else 1
+
+    bar_width = screen.get_width() // len(probabilities)
+    for index, prob in enumerate(probabilities):
+        color = (0, 0, 255)  # Blue color for all actions
+        if index == action_taken:
+            color = (173, 216, 230)  # Light blue for taken action
+        height = int(DISPLAY_ACTION_PROB_HEIGHT * prob)
+        pygame.draw.rect(screen, color, 
+            (index * bar_width, y + DISPLAY_ACTION_PROB_HEIGHT - height, bar_width, height))
+
+def display_frames(screen, frames, experience, act_vector, action_taken):
+    frame_height = frames.shape[0]
+
+    # clear the screen
+    screen.fill((0, 0, 0))
+
     # Transpose and enumerate the frames
     for i, frame in enumerate(frames.transpose(2, 1, 0)):
         frame = np.stack([frame] * 3, -1)
         frame_surface = pygame.surfarray.make_surface(frame)
         # draw from right to left
         screen.blit(frame_surface, (screen.get_width() - (i + 1) * frame_surface.get_width(), 0))
+    
+    # Draw experience bar
+    draw_experience_bar(screen, experience, frame_height)
+    
+    # Draw action probabilities
+    draw_action_probabilities(screen, act_vector, action_taken, frame_height + DISPLAY_EXP_BAR_HEIGHT)
+
     pygame.display.flip()
+
     
 
 ## ==================================================================
@@ -305,7 +349,8 @@ if __name__ == '__main__':
         agent.remember(prev_state, prev_action, reward, next_state, done)
 
         # Get action from DQN agent
-        next_action = agent.act(prev_state)
+        next_action_vector = agent.predict(next_state)
+        next_action = agent.act(next_action_vector)
 
         # Perform action in game environment
         perform_action(prev_action, next_action)
@@ -328,7 +373,7 @@ if __name__ == '__main__':
             agent.save(f"dqn_weights_{frame_count}.h5")  # save with the frame count for clarity
 
         # Display the frames using pygame
-        display_frames(screen, frames)
+        display_frames(screen, frames, new_experience, next_action_vector, next_action)
         
         # Add event handling to close pygame window
         for event in pygame.event.get():
