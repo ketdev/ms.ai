@@ -26,10 +26,10 @@ def is_yellow_green(pixel):
 if __name__ == '__main__':
 
     # load image as example
-    image = Image.open('./dqn/screen-test.png')
+    image = Image.open('./screenshot.png')
 
     # Scale down by half
-    image = image.resize((int(image.width * 0.5), int(image.height * 0.5)), Image.LANCZOS)
+    # image = image.resize((int(image.width * 0.5), int(image.height * 0.5)), Image.LANCZOS)
 
     # Convert bytes to numpy array
     frame_width = image.width
@@ -40,13 +40,13 @@ if __name__ == '__main__':
 
     # transpose image bytes to same format for make_surface
     data = np.frombuffer(data, dtype=np.uint8)
-    data = np.reshape(data, (frame_height, frame_width, 4))
+    data = np.reshape(data, (frame_height, frame_width, 3))
     data = np.transpose(data, (1, 0, 2))
     # remove alpha channel
     data = data[:, :, :3]
 
     # read progress bar from image (row 4 from bottom)
-    row_number = frame_height - 3
+    row_number = frame_height - 15
     row = data[:, row_number, :]
 
     # turn yellow pixels into white and everything else into black

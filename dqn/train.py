@@ -100,7 +100,10 @@ def is_yellow_green(pixel):
     return blue_to_green_ratio < 0.7 and green_value > 0.5
 
 def get_experience(screenshot, bottom_offset):
-    
+
+    # Save to the picture file
+    # screenshot.save('screenshot.png')
+
     # Convert bytes to numpy array
     frame_width = screenshot.width
     frame_height = screenshot.height
