@@ -17,13 +17,14 @@ elif sys.platform == "win32":  # Windows
 ## Constants
 ## ==================================================================
 
-TARGET_WINDOW_NAME = "screen-test.png"
+TARGET_WINDOW_NAME = "MapleStory"
 GRAYSCALE = True
 SCALE = 0.3
 TARGET_FPS = 30
 
+DISPLAY_SCALE = 2
 FRAMES_PER_STEP = 4
-EXPERIENCE_BAR_BOTTOM_OFFSET = 4 # pixels from bottom of screen
+EXPERIENCE_BAR_BOTTOM_OFFSET = 15 # pixels from bottom of screen
 DISPLAY_EXP_BAR_HEIGHT = 20 
 DISPLAY_ACTION_PROB_HEIGHT = 100
 
@@ -50,7 +51,7 @@ VK_RIGHT = 0x27
 VK_DOWN = 0x28
 # Action Scan codes
 KEY_JUMP = 0x1E # 'A'
-KEY_ATTACK = 0x21 # 'D'
+KEY_ATTACK = 0x20 # 'D'
 
 ACTION_TO_KEY_MAP = {
     Actions.IDLE: None,
@@ -161,7 +162,7 @@ def get_reward(prev_experience, new_experience):
     if prev_experience is None:
         return 0, True
     # Reward is the difference in experience
-    diff = new_experience - prev_experience
+    diff = (new_experience - prev_experience) * 100
     if diff > 0:
         return diff, True
     else: # on level up, the experience bar resets
@@ -177,32 +178,37 @@ def perform_action(prev_action, next_action):
         pass
 
     # first presses down, second releases
+    
+         #next_action == Actions.UP or \
     elif next_action == Actions.LEFT or \
          next_action == Actions.RIGHT or \
-         next_action == Actions.UP or \
          next_action == Actions.DOWN:
         if key not in keys_holding:
             if sys.platform == "darwin":  # macOS
                 press_key(key)
             elif sys.platform == "win32":  # Windows
                 press_virtual_key(key)
+            keys_holding.append(key)
         else:
             if sys.platform == "darwin":  # macOS
                 release_key(key)
             elif sys.platform == "win32":  # Windows
                 release_virtual_key(key)
-    elif next_action == Actions.JUMP or \
-         next_action == Actions.ATTACK:
+            keys_holding.remove(key)
+    elif next_action == Actions.ATTACK or \
+         next_action == Actions.JUMP:
         if key not in keys_holding:
             if sys.platform == "darwin":  # macOS
                 press_key(key)
             elif sys.platform == "win32":  # Windows
                 press_scan_key(key)
+            keys_holding.append(key)
         else:
             if sys.platform == "darwin":  # macOS
                 release_key(key)
             elif sys.platform == "win32":  # Windows
                 release_scan_key(key)
+            keys_holding.remove(key)
 
 
 def train_agent():
@@ -219,8 +225,9 @@ def train_agent():
 
 def initialize_display(width, height):
     pygame.init()
-    total_height = height + DISPLAY_EXP_BAR_HEIGHT + DISPLAY_ACTION_PROB_HEIGHT
-    screen = pygame.display.set_mode((width, total_height))
+    total_width = width * DISPLAY_SCALE
+    total_height = height * DISPLAY_SCALE + DISPLAY_EXP_BAR_HEIGHT + DISPLAY_ACTION_PROB_HEIGHT
+    screen = pygame.display.set_mode((total_width, total_height))
     pygame.display.set_caption('Captured Frames')
     return screen
 
@@ -251,7 +258,8 @@ def draw_action_probabilities(screen, act_vector, action_taken, y):
             (index * bar_width, y + DISPLAY_ACTION_PROB_HEIGHT - height, bar_width, height))
 
 def display_frames(screen, frames, experience, act_vector, action_taken):
-    frame_height = frames.shape[0]
+    frame_height = frames.shape[0] * DISPLAY_SCALE
+    frame_width = frames.shape[1] * DISPLAY_SCALE
 
     # clear the screen
     screen.fill((0, 0, 0))
@@ -260,6 +268,8 @@ def display_frames(screen, frames, experience, act_vector, action_taken):
     for i, frame in enumerate(frames.transpose(2, 1, 0)):
         frame = np.stack([frame] * 3, -1)
         frame_surface = pygame.surfarray.make_surface(frame)
+        frame_surface = pygame.transform.scale(frame_surface, 
+            (frame_surface.get_width() * DISPLAY_SCALE, frame_surface.get_height() * DISPLAY_SCALE))
         # draw from right to left
         screen.blit(frame_surface, (screen.get_width() - (i + 1) * frame_surface.get_width(), 0))
     
@@ -268,6 +278,11 @@ def display_frames(screen, frames, experience, act_vector, action_taken):
     
     # Draw action probabilities
     draw_action_probabilities(screen, act_vector, action_taken, frame_height + DISPLAY_EXP_BAR_HEIGHT)
+
+    # draw line where progress bar is    
+    row_number = frames.shape[0] / SCALE - EXPERIENCE_BAR_BOTTOM_OFFSET
+    row_number_scaled = row_number * SCALE * DISPLAY_SCALE
+    pygame.draw.line(screen, (255, 0, 0), (0, row_number_scaled), (frame_width, row_number_scaled), 1)
 
     pygame.display.flip()
 
@@ -344,6 +359,9 @@ if __name__ == '__main__':
 
         # Get reward and done from game environment for previous action
         reward, done = get_reward(prev_experience, new_experience)
+
+        if reward > 0:
+            print(f"REWARD: {reward}")
 
         # Store previous state, action, reward, next_state, done in agent memory
         agent.remember(prev_state, prev_action, reward, next_state, done)

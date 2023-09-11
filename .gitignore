@@ -27,6 +27,7 @@ bower_components
 
 playground/
 *.mpk
+*.h5
 
 .npm
 .eslintcache
