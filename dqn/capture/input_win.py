@@ -5,12 +5,6 @@ import ctypes
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_SCANCODE = 0x0008
 
-# Virtual key codes
-VK_LEFT = 0x25
-VK_UP = 0x26
-VK_RIGHT = 0x27
-VK_DOWN = 0x28
-
 # C struct definitions
 PUL = ctypes.POINTER(ctypes.c_ulong)
 
@@ -70,17 +64,4 @@ def release_virtual_key(vk_code):
     ii_.ki = KeyBdInput(vk_code, 0, KEYEVENTF_KEYUP, 0, ctypes.pointer(extra))
     x = Input(ctypes.c_ulong(1), ii_)
     ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
-
-
-
-KEY_A = 0x1E # 'A'
-
-# # Example: Press and release the 'A' key using its scan code
-
-press_virtual_key(VK_RIGHT)
-press_scan_key(KEY_A)
-time.sleep(1.2)
-release_scan_key(KEY_A)
-release_virtual_key(VK_RIGHT)
-
 

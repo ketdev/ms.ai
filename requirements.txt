@@ -2,6 +2,7 @@ mss
 Pillow
 pynput
 appscript
+pyobjc-framework-Quartz
 pywin32
 msgpack
 pygame

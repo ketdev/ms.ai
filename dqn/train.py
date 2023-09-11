@@ -1,21 +1,29 @@
+import sys
 import threading
 import time
 import numpy as np
 import queue
 import pygame
-from capture.screen_capture import get_window_bounds, screen_capture_generator
+from capture.screen_capture import get_window_bounds, capture_screen, scale_image, grayscale_image
 from capture.keyboard_capture import start_keyboard_listener, KeyState
 from model.dqn import DQN
+
+if sys.platform == "darwin":  # macOS
+    from capture.input_mac import press_key, release_key
+elif sys.platform == "win32":  # Windows
+    from capture.input import press_virtual_key, release_virtual_key, press_scan_key, release_scan_key
 
 ## ==================================================================
 ## Constants
 ## ==================================================================
 
 TARGET_WINDOW_NAME = "Sourcetree"
-TARGET_FPS = 30
 GRAYSCALE = True
 SCALE = 0.3
+TARGET_FPS = 30
+
 FRAMES_PER_STEP = 4
+EXPERIENCE_BAR_BOTTOM_OFFSET = 4
 
 class Actions:
     IDLE = 0
@@ -32,6 +40,25 @@ BATCH_SIZE = 32
 UPDATE_TARGET_MODEL_EVERY = 1000
 SAVE_WEIGHTS_EVERY = 5000  # Save model weights every 5000 frames
 
+# Action Virtual key codes
+VK_LEFT = 0x25
+VK_UP = 0x26
+VK_RIGHT = 0x27
+VK_DOWN = 0x28
+# Action Scan codes
+KEY_JUMP = 0x1E # 'A'
+KEY_ATTACK = 0x21 # 'D'
+
+ACTION_TO_KEY_MAP = {
+    Actions.IDLE: None,
+    Actions.LEFT: VK_LEFT,
+    Actions.RIGHT: VK_RIGHT,
+    Actions.UP: VK_UP,
+    Actions.DOWN: VK_DOWN,
+    Actions.JUMP: KEY_JUMP,
+    Actions.ATTACK: KEY_ATTACK
+}
+
 # Derived constants
 FRAME_DELAY = 1.0 / TARGET_FPS
 
@@ -45,28 +72,133 @@ stop_capture = False
 # Global event for replay
 can_replay = threading.Event()
 
+# Keys pressed down
+keys_holding = []
+
 ## ==================================================================
 ## Logic
 ## ==================================================================
 
-def get_new_frame(x, y, w, h, scale, grayscale):
-    frame_width = int(w * SCALE)
-    frame_height = int(h * SCALE)
-    while True:
-        screenshot = next(screen_capture_generator(x, y, w, h, scale, grayscale))
-        # Convert bytes to numpy array
-        data = np.frombuffer(screenshot, dtype=np.uint8)
-        data = np.reshape(data, (frame_height, frame_width))
-        yield data
+def is_yellow_green(pixel):
+    """Check if a pixel is yellow based on RGB ratio."""
+    red, green, blue = pixel[:3]  # only take RGB, ignore alpha if it exists
 
-def get_reward(prev_state, action, next_state):
-    # TODO: Implement reward function
-    return 0, False  # Reward, Done
+    # Avoid division by zero
+    if green == 0:
+        return False
+
+    # Check if the pixel is yellow-green-ish based on ratio
+    blue_to_green_ratio = blue / green
+
+    # Check if pixel is light enough
+    green_value = green / 255
+
+    return blue_to_green_ratio < 0.7 and green_value > 0.5
+
+def get_experience(screenshot, row_number):
+    
+    # Convert bytes to numpy array
+    frame_width = screenshot.width
+    frame_height = screenshot.height
+    
+    # convert to pixels
+    data = screenshot.tobytes()
+
+    # transpose image bytes to same format for make_surface
+    data = np.frombuffer(data, dtype=np.uint8)
+    data = np.reshape(data, (frame_height, frame_width, 3))
+    data = np.transpose(data, (1, 0, 2))
+
+    # read progress bar from image
+    row = data[:, row_number, :]
+
+    # turn yellow pixels into white and everything else into black
+    first_yellow = None
+    last_yellow = None
+    for i in range(row.shape[0]):
+        if is_yellow_green(row[i]):
+            if first_yellow is None:
+                first_yellow = i
+            last_yellow = i
+    
+    if first_yellow is None or last_yellow is None:
+        return 0.0
+
+    # calculate exp bar percentage
+    exp_bar_percentage = (last_yellow - first_yellow) / (row.shape[0] - first_yellow)
+    return exp_bar_percentage
+
+def get_new_frame(x, y, w, h, scale):
+    frame_width = int(w * scale)
+    frame_height = int(h * scale)
+    while True:
+        screenshot = next(capture_screen(x, y, w, h))
+
+        experience = get_experience(screenshot, frame_height - EXPERIENCE_BAR_BOTTOM_OFFSET)
+
+        # Detect display scaling
+        display_scale_down = w / screenshot.width
+
+        # Resize the image to a scale of the original size
+        frame = scale_image(screenshot, scale * display_scale_down)
+    
+        # Convert to grayscale
+        frame = grayscale_image(frame)
+
+        # Convert to byte array
+        frame = frame.tobytes()
+
+        # Convert bytes to numpy array
+        data = np.frombuffer(frame, dtype=np.uint8)
+        data = np.reshape(data, (frame_height, frame_width))
+        yield data, experience
+
+def get_reward(prev_experience, new_experience):
+    if prev_experience is None:
+        return 0, True
+    # Reward is the difference in experience
+    diff = new_experience - prev_experience
+    if diff > 0:
+        return diff, True
+    else: # on level up, the experience bar resets
+        return 0, True
 
 
 def perform_action(prev_action, next_action):
-    # TODO: Implement action function
     print(f"Action: {next_action}")
+
+    key = ACTION_TO_KEY_MAP[next_action]
+
+    if next_action == Actions.IDLE:
+        pass
+
+    # first presses down, second releases
+    elif next_action == Actions.LEFT or \
+         next_action == Actions.RIGHT or \
+         next_action == Actions.UP or \
+         next_action == Actions.DOWN:
+        if key not in keys_holding:
+            if sys.platform == "darwin":  # macOS
+                press_key(key)
+            elif sys.platform == "win32":  # Windows
+                press_virtual_key(key)
+        else:
+            if sys.platform == "darwin":  # macOS
+                release_key(key)
+            elif sys.platform == "win32":  # Windows
+                release_virtual_key(key)
+    elif next_action == Actions.JUMP or \
+         next_action == Actions.ATTACK:
+        if key not in keys_holding:
+            if sys.platform == "darwin":  # macOS
+                press_key(key)
+            elif sys.platform == "win32":  # Windows
+                press_scan_key(key)
+        else:
+            if sys.platform == "darwin":  # macOS
+                release_key(key)
+            elif sys.platform == "win32":  # Windows
+                release_scan_key(key)
 
 
 def train_agent():
@@ -123,7 +255,7 @@ if __name__ == '__main__':
     # Get initial state from game environment
     frames = []
     for i in range(FRAMES_PER_STEP):
-        new_frame = next(get_new_frame(x, y, w, h, SCALE, GRAYSCALE))
+        new_frame, experience = next(get_new_frame(x, y, w, h, SCALE))
         if i == 0:
             frames = np.zeros((new_frame.shape[0], new_frame.shape[1], FRAMES_PER_STEP), dtype=np.uint8)
         frames[:, :, i] = new_frame
@@ -141,6 +273,7 @@ if __name__ == '__main__':
     # State is 1 frame set of 4 frames
     prev_state = np.reshape(frames, [1, state_shape[0], state_shape[1], state_shape[2]])
     prev_action = Actions.IDLE
+    prev_experience = None
 
     # Run DQN agent
     frame_count = 0
@@ -156,15 +289,17 @@ if __name__ == '__main__':
             pass
 
         # Get next state from game environment
-        new_frame = next(get_new_frame(x, y, w, h, SCALE, GRAYSCALE))
+        new_frame, new_experience = next(get_new_frame(x, y, w, h, SCALE))
         frames = np.roll(frames, -1, axis=2)
         frames[:, :, -1] = new_frame
+
+        print(f"Experience: {new_experience * 100:.2f}%")
 
         # State is 1 frame set of 4 frames
         next_state = np.reshape(frames, [1, state_shape[0], state_shape[1], state_shape[2]])
 
         # Get reward and done from game environment for previous action
-        reward, done = get_reward(prev_state, prev_action, next_state)
+        reward, done = get_reward(prev_experience, new_experience)
 
         # Store previous state, action, reward, next_state, done in agent memory
         agent.remember(prev_state, prev_action, reward, next_state, done)
@@ -178,6 +313,7 @@ if __name__ == '__main__':
         # Update previous state
         prev_state = next_state
         prev_action = next_action
+        prev_experience = new_experience
 
         # Check if the agent can replay
         if len(agent.memory) > BATCH_SIZE:
