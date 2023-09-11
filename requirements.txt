@@ -6,3 +6,4 @@ pyobjc-framework-Quartz
 pywin32
 msgpack
 pygame
+tensorflow

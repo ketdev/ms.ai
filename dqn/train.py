@@ -11,13 +11,13 @@ from model.dqn import DQN
 if sys.platform == "darwin":  # macOS
     from capture.input_mac import press_key, release_key
 elif sys.platform == "win32":  # Windows
-    from capture.input import press_virtual_key, release_virtual_key, press_scan_key, release_scan_key
+    from capture.input_win import press_virtual_key, release_virtual_key, press_scan_key, release_scan_key
 
 ## ==================================================================
 ## Constants
 ## ==================================================================
 
-TARGET_WINDOW_NAME = "Sourcetree"
+TARGET_WINDOW_NAME = "MapleStory"
 GRAYSCALE = True
 SCALE = 0.3
 TARGET_FPS = 30
