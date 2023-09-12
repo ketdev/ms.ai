@@ -2,6 +2,7 @@ import socket
 import time
 import threading
 import numpy as np
+from struct import pack
 from pynput import keyboard
 
 from capture.screen_capture import get_window_bounds, capture_screen, scale_image_to, grayscale_image, to_numpy_rgb, to_numpy_grayscale, compress_image
@@ -56,12 +57,12 @@ def capture_frame(x, y, w, h):
         frame = scale_image_to(screenshot, FRAME_WIDTH, FRAME_HEIGHT)
         frame = grayscale_image(frame)
 
-        # data = to_numpy_grayscale(frame)
-        data = compress_image(frame)
+        data = to_numpy_grayscale(frame)
+        # data = compress_image(frame)
 
         yield data, metrics
 
-def make_data_block(frames, metrics_buffer):
+def make_data_block(frames_buffer, metrics_buffer):
     data_block = b''
 
     # concat frames into one long array followed by metrics
@@ -72,16 +73,12 @@ def make_data_block(frames, metrics_buffer):
             value = metric[name]
             if value is None:
                 value = 0
-            value = value.to_bytes(4, byteorder='big')
-            data_block += value
+            data_block += pack('f', value)
 
         # Write frame length and frame data
-        frame = frames[i]
-        frame = frame.flatten()
-        frame = frame.tobytes()
+        frame = frames_buffer[i]
         frame_len = len(frame)
-        frame_len = frame_len.to_bytes(4, byteorder='big')
-        data_block += frame_len
+        data_block += pack('I', frame_len)
         data_block += frame
 
     return data_block
@@ -121,8 +118,7 @@ def main():
     print(f"Found: {title} (x:{x} y:{y} w:{w} h:{h})")
 
     # Initialize the frame buffer
-    frame_data, metrics = next(capture_frame()) # dummy frame for dimensions
-    frames = np.zeros((frame_data.shape[0], frame_data.shape[1], FRAMES_PER_STEP), dtype=np.uint8)
+    frames_buffer = []
     metrics_buffer = []
 
     # Keep track of frames per second
@@ -139,18 +135,16 @@ def main():
         frame_step += 1
         frame, metrics = next(capture_frame(x, y, w, h))
 
-        # Add frame to buffer
-        frames = np.roll(frames, -1, axis=2)
-        frames[:, :, -1] = frame
-
         # Add metrics to buffer
+        frames_buffer.append(frame)
         metrics_buffer.append(metrics)
         if len(metrics_buffer) > FRAMES_PER_STEP:
+            frames_buffer.pop(0)
             metrics_buffer.pop(0)
 
         # Send frames to server if reached target number of frames
         if frame_step >= FRAMES_PER_STEP:
-            data_block = make_data_block(frames, metrics_buffer)
+            data_block = make_data_block(frames_buffer, metrics_buffer)
             send_data(s, data_block)
             frame_step = 0
 
