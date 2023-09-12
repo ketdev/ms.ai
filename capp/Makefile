@@ -1,16 +1,34 @@
-capp.exe: main.o
-		gcc -o $@ $^ -L../lib -lhello
-		# '-o $@'    => output file => $@ = the target file (app.exe)
-		# '   $^'    => no options => Link all depended files 
-		#            => $^ = main.o and other if any
-		# '-L../lib' => look for libraries in directory ../lib
-		# '-lhello   => use shared library hello (libhello.so or hello.dll)
+# Compiler and Linker
+CC          := g++
 
-%.o: %.cpp
-		gcc -o $@ -c $< -I ../lib
-		# '-o $@'     => output file => $@ = the target file (main.o)
-		# '-c $<'     => COMPILE the first depended file (main.cpp)
-		# '-I ../lib' => look for headers (*.h) in directory ../lib
+# The Target Binary Program
+TARGET      := capture
 
+# The Directories, Source, Includes, Objects and Resources
+SRCDIR      := .
+OBJDIR      := obj
+BINDIR      := .
+
+SOURCES     := $(wildcard $(SRCDIR)/*.cpp)
+OBJECTS     := $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+
+# Flags, Libraries and Includes
+CFLAGS      := -Wall
+LIBS 		:= -lws2_32 -lgdi32 
+INCLUDE     := -I$(SRCDIR)
+
+
+$(BINDIR)/$(TARGET): $(OBJECTS)
+	@$(CC) $(OBJECTS) $(LIBS) -o $@
+	@echo "Linking complete!"
+
+$(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
+	@$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@ 
+	@echo "Compiled "$<" successfully!"
+
+.PHONY: clean
 clean:
-        rm -f *.o *.so *.dll *.exe
+	@echo "Cleaning..."
+	@echo "$(OBJDIR)/*.o"
+	@rm -rf $(OBJDIR)/*.o $(BINDIR)/$(TARGET)
+	@echo "Cleaning done!"
