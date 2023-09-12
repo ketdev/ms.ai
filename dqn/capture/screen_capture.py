@@ -86,11 +86,11 @@ def capture_screen(x, y, w, h):
 ## Image Utilities
 ## ==================================================================
 
+def scale_image_to(image, width, height):
+    return image.resize((width, height), Image.LANCZOS)
+
 def scale_image(image, scale):
-    return image.resize((
-        int(image.width * scale), 
-        int(image.height * scale)
-    ), Image.LANCZOS)
+    return scale_image_to(image, int(image.width * scale), int(image.height * scale))
 
 def grayscale_image(image):
     return image.convert('L')

@@ -3,11 +3,18 @@
 ## Configurations
 ## ==================================================================
 
+# Network
+SERVER_IP = '192.168.1.2'  # IP address of the training computer
+PORT = 12345
+
 # Environment
 TARGET_WINDOW_NAME = "Sourcetree"
 MODEL_WEIGHTS_FILE = "model_weights.h5"
 GRAYSCALE = True
-SCALE = 0.3
+FRAME_WIDTH = 640
+FRAME_HEIGHT = 360
+
+SCALE = 0.5
 
 CAPTURE_TARGET_FPS = 20
 FRAMES_PER_STEP = 4
