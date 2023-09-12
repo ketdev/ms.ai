@@ -2,9 +2,11 @@ import socket
 import time
 import threading
 import numpy as np
+from struct import unpack
 from pynput import keyboard
 
 from logic.config import PORT, FRAME_WIDTH, FRAME_HEIGHT, FRAMES_PER_STEP
+from capture.screen_capture import decompress_image, to_numpy_grayscale
 
 
 ## ==================================================================
@@ -85,7 +87,7 @@ def recv_data_block(sock):
         metrics_data = sock.recv(METRICS_SIZE)
         if len(metrics_data) < METRICS_SIZE:
             raise Exception("Socket connection broken")
-        metrics_array = np.frombuffer(metrics_data, dtype=np.float32)
+        metrics_array = unpack("fff", metrics_data)
         metrics_buffer.append({
             "HP": metrics_array[0],
             "MP": metrics_array[1],
@@ -96,7 +98,7 @@ def recv_data_block(sock):
         frame_size_data = sock.recv(4)
         if len(frame_size_data) < 4:
             raise Exception("Socket connection broken")
-        frame_size = int.from_bytes(frame_size_data, byteorder='big')
+        frame_size = unpack("I", frame_size_data)[0]
 
         chunks = []
         bytes_recd = 0
@@ -108,12 +110,13 @@ def recv_data_block(sock):
             bytes_recd += len(chunk)
         frame = b''.join(chunks)
 
-        frame_array = np.frombuffer(frame, dtype=np.uint8).reshape(FRAME_HEIGHT, FRAME_WIDTH)
-        frames.append(frame_array)
+        frame = decompress_image(frame)
+        frame = to_numpy_grayscale(frame)
+        frames.append(frame)
 
     return frames, metrics_buffer
     
-def action(frame, metrics):
+def get_action(frame, metrics):
     # For the sake of simplicity, this function will just
     # return a dummy action byte. Replace with your own logic!
     dummy_action = b'0'
@@ -138,7 +141,7 @@ def main():
     while not stop_capture:
         frames, metrics_buffer = recv_data_block(client_socket)
 
-        action = action(frames, metrics_buffer)
+        action = get_action(frames, metrics_buffer)
 
         client_socket.send(action)
 

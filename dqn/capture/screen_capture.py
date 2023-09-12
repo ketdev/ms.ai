@@ -101,6 +101,10 @@ def compress_image(image):
     image.save(image_bytes, format='PNG')
     return image_bytes.getvalue()
 
+# png decompression
+def decompress_image(image_bytes):
+    return Image.open(io.BytesIO(image_bytes))
+
 def to_numpy_rgb(image):
     frame_width = image.width
     frame_height = image.height
