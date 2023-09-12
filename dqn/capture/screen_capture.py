@@ -95,6 +95,12 @@ def scale_image(image, scale):
 def grayscale_image(image):
     return image.convert('L')
 
+# png compression
+def compress_image(image):
+    image_bytes = io.BytesIO()
+    image.save(image_bytes, format='PNG')
+    return image_bytes.getvalue()
+
 def to_numpy_rgb(image):
     frame_width = image.width
     frame_height = image.height
