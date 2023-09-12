@@ -40,8 +40,8 @@ def draw_action_probabilities(screen, act_vector, action_taken, y):
     else:
         probabilities = act_vector
     # make sure the sum of the probabilities is 1
-    sum = np.sum(probabilities)
-    probabilities /= sum if sum != 0 else 1
+    prob_sum = np.sum(probabilities)
+    probabilities /= prob_sum if prob_sum != 0 else 1
 
     bar_width = screen.get_width() // len(probabilities)
     for index, prob in enumerate(probabilities):
@@ -76,12 +76,14 @@ def display_frames(screen, frames, metrics, act_vector, action_taken, fps):
             # draw to the right of first frame, top to bottom
             screen.blit(frame_surface, (frame_width, (inv - 1) * frame_height // 3))
     
-    # Draw metric bars
-    draw_metric_bars(screen, metrics, frame_height)
+    # Draw metric bars for last frame
+    if len(metrics) > 0:
+        last_metrics = metrics[-1]
+        draw_metric_bars(screen, last_metrics, frame_height)
     
     # Draw action probabilities
     draw_action_probabilities(screen, act_vector, action_taken, frame_height + DISPLAY_METRIC_BAR_HEIGHT * 3)
-
+ 
     # Show FPS at top right corner
     font = pygame.font.SysFont("Arial", 20)
     fps_text = "FPS:" + str(fps)
@@ -90,4 +92,11 @@ def display_frames(screen, frames, metrics, act_vector, action_taken, fps):
 
     pygame.display.flip()
 
-    
+def display_event_loop():
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            return True
+    return False
+
+def close_display():
+    pygame.quit()

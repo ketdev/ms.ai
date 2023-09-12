@@ -4,11 +4,10 @@ import threading
 import time
 import numpy as np
 import queue
-import pygame
 from capture.screen_capture import get_window_bounds, capture_screen, scale_image, grayscale_image, to_numpy_rgb, to_numpy_grayscale
 from capture.keyboard_capture import start_keyboard_listener, KeyState
 from logic.metrics import get_metric_percentages
-from logic.debug_display import initialize_display, display_frames
+from logic.debug_display import initialize_display, display_frames, display_event_loop, close_display
 from model.dqn import DQN
 
 if sys.platform == "darwin":  # macOS
@@ -288,13 +287,12 @@ if __name__ == '__main__':
         if frame_count % SAVE_WEIGHTS_EVERY == 0:
             agent.save(f"dqn_weights_{frame_count}.h5")  # save with the frame count for clarity
 
-        # Display the frames using pygame
+        # Display the frames
         display_frames(screen, frames, next_metrics, next_action_vector, next_action, fps)
         
         # Add event handling to close pygame window
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                stop_capture = True
+        if display_event_loop():
+            stop_capture = True
 
         # Calculate remaining delay to maintain 30 fps
         elapsed_time = time.time() - timestamp
@@ -307,7 +305,7 @@ if __name__ == '__main__':
     keyboard_thread.join()
 
     # Quit pygame
-    pygame.quit()
+    close_display()
 
     # Save model weights at end of training
     agent.save("dqn_weights_final.h5")
