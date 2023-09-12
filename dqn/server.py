@@ -44,79 +44,39 @@ def start_keyboard_listener():
 ## Main Processes
 ## ==================================================================
 
-def make_data_block(frames, metrics_buffer):
-    data_block = b''
+def send_action(sock, action):
+    sock.send(action)
 
-    # concat frames into one long array followed by metrics
-    for i in range(FRAMES_PER_STEP):
-        # Write metrics
-        metric = metrics_buffer[i]
-        for name in ["HP", "MP", "EXP"]:
-            value = metric[name]
-            if value is None:
-                value = 0
-            value = value.to_bytes(4, byteorder='big')
-            data_block += value
+def recv_data(sock):
+    # first receive the metrics
+    metrics_data = sock.recv(METRICS_SIZE)
+    if len(metrics_data) < METRICS_SIZE:
+        raise Exception("Socket connection broken")
+    metrics_array = unpack("fff", metrics_data)
+    metrics = {
+        "HP": metrics_array[0],
+        "MP": metrics_array[1],
+        "EXP": metrics_array[2]
+    }
 
-        # Write frame length and frame data
-        frame = frames[i]
-        frame = frame.flatten()
-        frame = frame.tobytes()
-        frame_len = len(frame)
-        frame_len = frame_len.to_bytes(4, byteorder='big')
-        data_block += frame_len
-        data_block += frame
-
-    return data_block
-
-def send_data(sock, data_block):
-    bytes_sent = 0
-    while bytes_sent < len(data_block):
-        sent = sock.send(data_block[bytes_sent:])
-        if sent == 0:
+    # then receive the frame
+    chunks = []
+    bytes_recd = 0
+    while bytes_recd < FRAME_SIZE:
+        chunk = sock.recv(min(FRAME_SIZE - bytes_recd, BUFFER_SIZE))
+        if chunk == b'':
             raise Exception("Socket connection broken")
-        bytes_sent += sent
-    return bytes_sent
+        chunks.append(chunk)
+        bytes_recd += len(chunk)
+    frame = b''.join(chunks)
 
+    # convert back to numpy array
+    frame = np.frombuffer(frame, dtype=np.uint8)
+    # frame = to_numpy_grayscale(frame)
 
-def recv_data_block(sock):
-    metrics_buffer = []
-    frames = []
-    for i in range(FRAMES_PER_STEP):
-        # first receive the metrics
-        metrics_data = sock.recv(METRICS_SIZE)
-        if len(metrics_data) < METRICS_SIZE:
-            raise Exception("Socket connection broken")
-        metrics_array = unpack("fff", metrics_data)
-        metrics_buffer.append({
-            "HP": metrics_array[0],
-            "MP": metrics_array[1],
-            "EXP": metrics_array[2]
-        })
-
-        # then receive the frame length
-        frame_size_data = sock.recv(4)
-        if len(frame_size_data) < 4:
-            raise Exception("Socket connection broken")
-        frame_size = unpack("I", frame_size_data)[0]
-
-        chunks = []
-        bytes_recd = 0
-        while bytes_recd < frame_size:
-            chunk = sock.recv(min(frame_size - bytes_recd, BUFFER_SIZE))
-            if chunk == b'':
-                raise Exception("Socket connection broken")
-            chunks.append(chunk)
-            bytes_recd += len(chunk)
-        frame = b''.join(chunks)
-
-        frame = decompress_image(frame)
-        frame = to_numpy_grayscale(frame)
-        frames.append(frame)
-
-    return frames, metrics_buffer
+    return frame, metrics
     
-def get_action(frame, metrics):
+def get_action():
     # For the sake of simplicity, this function will just
     # return a dummy action byte. Replace with your own logic!
     dummy_action = b'0'
@@ -138,12 +98,16 @@ def main():
     print(f"Connection from {client_address}")
 
     # Capture frames and send them to the server
+    frame_step = 0
     while not stop_capture:
-        frames, metrics_buffer = recv_data_block(client_socket)
+        frame_step += 1
+        frame, metrics = recv_data(client_socket)
 
-        action = get_action(frames, metrics_buffer)
-
-        client_socket.send(action)
+        # Send frames to server if reached target number of frames
+        if frame_step >= FRAMES_PER_STEP:
+            action = get_action()
+            send_action(client_socket, action)
+            frame_step = 0
 
     # Close the connection
     s.close()
