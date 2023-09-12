@@ -4,6 +4,7 @@ import threading
 import numpy as np
 from struct import unpack
 from pynput import keyboard
+from queue import Queue
 
 from logic.config import PORT, FRAME_WIDTH, FRAME_HEIGHT, FRAMES_PER_STEP
 from capture.screen_capture import decompress_image, to_numpy_grayscale

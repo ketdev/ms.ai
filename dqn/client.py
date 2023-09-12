@@ -42,7 +42,7 @@ def start_keyboard_listener():
 
 
 ## ==================================================================
-## Main Processes
+## Helper functions
 ## ==================================================================
 
 def capture_frame(x, y, w, h):
@@ -81,6 +81,10 @@ def recv_action(sock):
         raise Exception("Socket connection broken")
     return action
 
+## ==================================================================
+## Main Processes
+## ==================================================================
+
 def send_loop(sock, x, y, w, h):
     frame_count = 0
     fps_start_time = time.time()
@@ -100,11 +104,11 @@ def send_loop(sock, x, y, w, h):
             frame_count = 0
             fps_start_time = time.time()
 
-        # # Calculate remaining delay to maintain target FPS
-        # elapsed_time = time.time() - timestamp
-        # sleep_time = FRAME_DELAY - elapsed_time
-        # if sleep_time > 0:
-        #     time.sleep(sleep_time)
+        # Calculate remaining delay to maintain target FPS
+        elapsed_time = time.time() - timestamp
+        sleep_time = FRAME_DELAY - elapsed_time
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
 def recv_loop(sock):
     frame_step = 0
