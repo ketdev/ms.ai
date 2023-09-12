@@ -62,28 +62,13 @@ def capture_frame(x, y, w, h):
 
         yield data, metrics
 
-def make_data_block(frames_buffer, metrics_buffer):
+def send_data(sock, metrics, frame):
     data_block = b''
+    data_block += pack('f', metrics["HP"])
+    data_block += pack('f', metrics["MP"])
+    data_block += pack('f', metrics["EXP"])
+    data_block += frame.tobytes()
 
-    # concat frames into one long array followed by metrics
-    for i in range(FRAMES_PER_STEP):
-        # Write metrics
-        metric = metrics_buffer[i]
-        for name in ["HP", "MP", "EXP"]:
-            value = metric[name]
-            if value is None:
-                value = 0
-            data_block += pack('f', value)
-
-        # Write frame length and frame data
-        frame = frames_buffer[i]
-        frame_len = len(frame)
-        data_block += pack('I', frame_len)
-        data_block += frame
-
-    return data_block
-
-def send_data(sock, data_block):
     bytes_sent = 0
     while bytes_sent < len(data_block):
         sent = sock.send(data_block[bytes_sent:])
@@ -117,10 +102,6 @@ def main():
     h = bounds["size"]["height"] - (WINDOW_MARGIN_TOP + WINDOW_MARGIN_BOTTOM)
     print(f"Found: {title} (x:{x} y:{y} w:{w} h:{h})")
 
-    # Initialize the frame buffer
-    frames_buffer = []
-    metrics_buffer = []
-
     # Keep track of frames per second
     frame_count = 0
     fps_start_time = time.time()
@@ -132,22 +113,15 @@ def main():
         timestamp = time.time()
 
         # Capture frame and save to buffer
-        frame_step += 1
         frame, metrics = next(capture_frame(x, y, w, h))
 
-        # Add metrics to buffer
-        frames_buffer.append(frame)
-        metrics_buffer.append(metrics)
-        if len(metrics_buffer) > FRAMES_PER_STEP:
-            frames_buffer.pop(0)
-            metrics_buffer.pop(0)
+        # Send frames to server
+        send_data(s, metrics, frame)
 
-        # Send frames to server if reached target number of frames
+        # Recv action after enough frames
+        frame_step += 1
         if frame_step >= FRAMES_PER_STEP:
-            data_block = make_data_block(frames_buffer, metrics_buffer)
-            send_data(s, data_block)
             frame_step = 0
-
             action = recv_action(s)
             print(f"Action: {action}")
 
