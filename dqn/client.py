@@ -58,8 +58,6 @@ def capture_frame(x, y, w, h):
         frame = grayscale_image(frame)
 
         data = to_numpy_grayscale(frame)
-        # data = compress_image(frame)
-
         yield data, metrics
 
 def send_data(sock, metrics, frame):
@@ -83,16 +81,47 @@ def recv_action(sock):
         raise Exception("Socket connection broken")
     return action
 
+def send_loop(sock, x, y, w, h):
+    frame_count = 0
+    fps_start_time = time.time()
+    while not stop_capture:
+        timestamp = time.time()
+
+        # Capture frame and save to buffer
+        frame, metrics = next(capture_frame(x, y, w, h))
+
+        # Send frames to server
+        send_data(sock, metrics, frame)
+
+        # Update frames per second
+        frame_count += 1
+        if time.time() - fps_start_time >= 1:
+            print(f"Send FPS: {frame_count}")
+            frame_count = 0
+            fps_start_time = time.time()
+
+        # # Calculate remaining delay to maintain target FPS
+        # elapsed_time = time.time() - timestamp
+        # sleep_time = FRAME_DELAY - elapsed_time
+        # if sleep_time > 0:
+        #     time.sleep(sleep_time)
+
+def recv_loop(sock):
+    frame_step = 0
+    while not stop_capture:
+        # Recv action after enough frames
+        frame_step += 1
+        if frame_step >= FRAMES_PER_STEP:
+            frame_step = 0
+            action = recv_action(sock)
+            print(f"Action: {action}")
+
 def main():
     
     # Initialize the socket connection
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     s.connect((SERVER_IP, PORT))
-
-    # Start the keyboard listener thread
-    keyboard_thread = threading.Thread(target=start_keyboard_listener)
-    keyboard_thread.start()
 
     # Get bounds for target window
     title, bounds = get_window_bounds(TARGET_WINDOW_NAME).popitem()
@@ -102,50 +131,24 @@ def main():
     h = bounds["size"]["height"] - (WINDOW_MARGIN_TOP + WINDOW_MARGIN_BOTTOM)
     print(f"Found: {title} (x:{x} y:{y} w:{w} h:{h})")
 
-    # Keep track of frames per second
-    frame_count = 0
-    fps_start_time = time.time()
-    fps = 0
+    # Start the keyboard listener thread
+    keyboard_thread = threading.Thread(target=start_keyboard_listener)
+    keyboard_thread.start()
 
-    # Capture frames and send them to the server
-    frame_step = 0
-    while not stop_capture:
-        timestamp = time.time()
-
-        # Capture frame and save to buffer
-        frame, metrics = next(capture_frame(x, y, w, h))
-
-        # Send frames to server
-        send_data(s, metrics, frame)
-
-        # Recv action after enough frames
-        frame_step += 1
-        if frame_step >= FRAMES_PER_STEP:
-            frame_step = 0
-            action = recv_action(s)
-            print(f"Action: {action}")
-
-        # Update frames per second
-        frame_count += 1
-        if time.time() - fps_start_time >= 1:
-            fps = frame_count
-            frame_count = 0
-            fps_start_time = time.time()
-
-        # Print FPS
-        print(f"FPS: {fps}")
-
-        # # Calculate remaining delay to maintain target FPS
-        # elapsed_time = time.time() - timestamp
-        # sleep_time = FRAME_DELAY - elapsed_time
-        # if sleep_time > 0:
-        #     time.sleep(sleep_time)
+    # Start send and recv threads
+    send_thread = threading.Thread(target=send_loop, args=(s, x, y, w, h))
+    recv_thread = threading.Thread(target=recv_loop, args=(s,))
     
+    send_thread.start()
+    recv_thread.start()
+    
+    # Wait for threads to finish
+    send_thread.join()
+    recv_thread.join()
+    keyboard_thread.join()
+
     # Close the connection
     s.close()
-
-    # Join the keyboard listener thread
-    keyboard_thread.join()
 
 
 if __name__ == '__main__':

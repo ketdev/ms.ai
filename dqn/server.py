@@ -25,6 +25,9 @@ METRICS_SIZE = 3 * 4  # Three float32 values
 # Global stop flag
 stop_capture = False
 
+# Global frames queue
+frames_queue = Queue()
+
 
 ## ==================================================================
 ## Keyboard Stop Condition (press ESC to stop)
@@ -82,11 +85,26 @@ def get_action():
     dummy_action = b'0'
     return dummy_action
 
-def main():
-    # Start the keyboard listener thread
-    keyboard_thread = threading.Thread(target=start_keyboard_listener)
-    keyboard_thread.start()
 
+def receive_frames_thread(client_socket):
+    while not stop_capture:
+        frame, metrics = recv_data(client_socket)
+        frames_queue.put((frame, metrics))
+
+
+def process_frames_thread(client_socket):
+    frame_step = 0
+    while not stop_capture:
+        frame_step += 1
+        frame, metrics = frames_queue.get()
+
+        # Send frames to server if reached target number of frames
+        if frame_step >= FRAMES_PER_STEP:
+            action = get_action()
+            send_action(client_socket, action)
+            frame_step = 0
+
+def main():
     # Initialize the socket connection
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -97,23 +115,25 @@ def main():
     client_socket, client_address = s.accept()
     print(f"Connection from {client_address}")
 
-    # Capture frames and send them to the server
-    frame_step = 0
-    while not stop_capture:
-        frame_step += 1
-        frame, metrics = recv_data(client_socket)
+    # Start the keyboard listener thread
+    keyboard_thread = threading.Thread(target=start_keyboard_listener)
+    keyboard_thread.start()
 
-        # Send frames to server if reached target number of frames
-        if frame_step >= FRAMES_PER_STEP:
-            action = get_action()
-            send_action(client_socket, action)
-            frame_step = 0
+    # Start threads
+    recv_thread = threading.Thread(target=receive_frames_thread, args=(client_socket,))
+    process_thread = threading.Thread(target=process_frames_thread, args=(client_socket,))
+    recv_thread.start()
+    process_thread.start()
+
+    # Wait for threads to finish
+    recv_thread.join()
+    process_thread.join()
+    keyboard_thread.join()
 
     # Close the connection
+    client_socket.close()
     s.close()
 
-    # Join the keyboard listener thread
-    keyboard_thread.join()
 
 
 if __name__ == '__main__':
