@@ -76,8 +76,9 @@ def is_yellow_green(pixel):
 
     # Check if pixel is light enough
     green_value = green / 255
+    red_value = red / 255
 
-    return blue_to_green_ratio < 0.7 and green_value > 0.5
+    return blue_to_green_ratio < 0.7 and green_value > 0.7 and red_value > 0.5
 
 def get_metric_percentages(img_data):
     frame_height = img_data.shape[1]

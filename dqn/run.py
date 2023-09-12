@@ -91,11 +91,12 @@ def game_interface_process(conn_game):
             # Perform action in game environment
             perform_action(action_vector, action)
 
-            # Reset frame buffer
-            metrics_buffer = []
-
         # Display the frames and metrics
         display_info(frames, metrics_buffer, action_vector, action, fps)
+
+        # Reset frame buffer after displaying
+        if frame_count % FRAMES_PER_STEP == 0:
+            metrics_buffer = []
 
         # Calculate remaining delay to maintain target FPS
         elapsed_time = time.time() - timestamp

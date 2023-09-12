@@ -62,6 +62,7 @@ def capture_frame(x, y, w, h):
 def send_frame(sock, frame):
     bytes_sent = 0
     while bytes_sent < FRAME_SIZE:
+        frame = np.ascontiguousarray(frame)
         sent = sock.send(frame[bytes_sent:])
         if sent == 0:
             raise Exception("Socket connection broken")
@@ -123,7 +124,7 @@ def main():
         send_frame(s, frame)
         send_metrics(s, metrics)
         action = recv_action(s)
-        print(f"Action: {action}")
+        # print(f"Action: {action}")
 
         # Update frames per second
         frame_count += 1
@@ -133,13 +134,13 @@ def main():
             fps_start_time = time.time()
 
         # Print FPS
-        print(f"FPS: {fps}")
+        print(f"FPS: {fps}", end="\r")
 
-        # Calculate remaining delay to maintain target FPS
-        elapsed_time = time.time() - timestamp
-        sleep_time = FRAME_DELAY - elapsed_time
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+        # # Calculate remaining delay to maintain target FPS
+        # elapsed_time = time.time() - timestamp
+        # sleep_time = FRAME_DELAY - elapsed_time
+        # if sleep_time > 0:
+        #     time.sleep(sleep_time)
     
     # Close the connection
     s.close()

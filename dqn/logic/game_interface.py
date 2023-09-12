@@ -19,7 +19,6 @@ elif sys.platform == "win32":  # Windows
 ## Constants
 ## ==================================================================
 
-DISPLAY_SCALE = 2
 DISPLAY_EXP_BAR_HEIGHT = 20 
 DISPLAY_ACTION_PROB_HEIGHT = 100
 
@@ -60,6 +59,8 @@ def init_game_interface():
 def capture_frame():
     while True:
         screenshot = next(capture_screen(window_x, window_y, window_w, window_h))
+        # screenshot.save("sample.png")
+
         img_data = to_numpy_rgb(screenshot) # np array
 
         # Calculate metrics from screenshot
@@ -83,10 +84,10 @@ def perform_action(prev_action, next_action):
 
     # first presses down, second releases
     
-         #next_action == Actions.UP or \
+    #  next_action == Actions.UP or \
+    #  next_action == Actions.DOWN or \
     elif next_action == Actions.LEFT or \
-         next_action == Actions.RIGHT or \
-         next_action == Actions.DOWN:
+         next_action == Actions.RIGHT:
         if key not in keys_holding:
             if sys.platform == "darwin":  # macOS
                 press_key(key)
@@ -99,8 +100,8 @@ def perform_action(prev_action, next_action):
             elif sys.platform == "win32":  # Windows
                 release_virtual_key(key)
             keys_holding.remove(key)
-    elif next_action == Actions.ATTACK or \
-         next_action == Actions.JUMP:
+    #   next_action == Actions.JUMP or \
+    elif next_action == Actions.ATTACK:
         if key not in keys_holding:
             if sys.platform == "darwin":  # macOS
                 press_key(key)
