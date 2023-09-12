@@ -84,8 +84,9 @@ void send_loop(int sock, int x, int y, int w, int h) {
         cimg_library::CImg<unsigned char> image = convertToCImg(bytes, w, h);
         Metrics metrics = get_metric_percentages(image, w, h);
 
-        // // Resize the image
-        // image.resize(FRAME_WIDTH, FRAME_HEIGHT, -100, -100, 3);
+        // Resize the image
+        // image.resize(FRAME_WIDTH, FRAME_HEIGHT, -100, -100, 3); // ANTIALIASING but it's slow...
+        image.resize(FRAME_WIDTH, FRAME_HEIGHT);
         
         // Convert BGRA to Grayscale
         cimg_library::CImg<unsigned char> grayscale(FRAME_WIDTH, FRAME_HEIGHT, 1, 1, 0);
