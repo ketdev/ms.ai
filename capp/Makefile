@@ -12,14 +12,20 @@ BINDIR      := .
 SOURCES     := $(wildcard $(SRCDIR)/*.cpp)
 OBJECTS     := $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 
+# OpenCV paths and flags
+OPENCV_INCLUDE := -IC:/opencv/build/include
+OPENCV_LIBDIR  := -L./lib
+OPENCV_LIBS    := -lopencv_world480
+
 # Flags, Libraries and Includes
-CFLAGS      := -Wall
-LIBS 		:= -lws2_32 -lgdi32 
-INCLUDE     := -I$(SRCDIR)
+CFLAGS      := -Wall -O3 -march=native -flto
+LIBDIRS		:= $(OPENCV_LIBDIR)
+LIBS 		:= -flto -lws2_32 -lGdi32 -luser32 $(OPENCV_LIBS) 
+INCLUDE     := -I$(SRCDIR) $(OPENCV_INCLUDE)
 
 
 $(BINDIR)/$(TARGET): $(OBJECTS)
-	@$(CC) $(OBJECTS) $(LIBS) -o $@
+	@$(CC) $(LIBDIRS) $(OBJECTS) $(LIBS) -o $@
 	@echo "Linking complete!"
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp

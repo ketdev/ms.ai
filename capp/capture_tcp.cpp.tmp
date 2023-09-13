@@ -1,0 +1,155 @@
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <cstring>
+#include <opencv2/opencv.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
+
+#include "network.hpp"
+#include "screen-capture.hpp"
+#include "metrics.hpp"
+#include "input.hpp"
+
+
+// ==================================================================
+// Constants
+// ==================================================================
+
+const char* const SERVER_IP = "10.0.0.6"; // IP address of the training computer
+const int PORT = 12345;
+
+const char* const TARGET_WINDOW_NAME = "Untitled - Notepad";
+const int FRAME_WIDTH = 640;
+const int FRAME_HEIGHT = 360;
+const int CAPTURE_TARGET_FPS = 30;
+const int FRAMES_PER_STEP = 4;
+
+const float FRAME_DELAY = 1.0f / CAPTURE_TARGET_FPS;
+const int FRAME_SIZE = FRAME_WIDTH * FRAME_HEIGHT;
+
+// ==================================================================
+// Global Variables
+// ==================================================================
+
+// Global stop flag
+bool stop_capture = false;
+
+
+// ==================================================================
+// Keyboard Stop Condition (press ESC to stop)
+// ==================================================================
+
+void start_keyboard_listener() {
+    while (!stop_capture) {
+        if (GetAsyncKeyState(VK_ESCAPE)) {
+            stop_capture = true;
+            break;
+        }
+        Sleep(100);  // don't hog the CPU
+    }
+}
+
+
+// ==================================================================
+// Main Processes
+// ==================================================================
+
+void send_loop(int sock, int x, int y, int w, int h) {
+    int frameCount = 0;
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    cv::Mat capturedImage;
+    ScreenCapturer capturer(x, y, w, h);
+
+    while (!stop_capture) {
+        frameCount++;
+
+        capturer.capture(capturedImage);
+
+        Metrics metrics = get_metric_percentages(capturedImage, w, h);
+
+        // Resize the image
+        cv::Mat resizedImage;
+        cv::resize(capturedImage, resizedImage, cv::Size(FRAME_WIDTH, FRAME_HEIGHT));
+        
+        // Convert BGRA to Grayscale
+        cv::Mat grayscale;
+        cv::cvtColor(resizedImage, grayscale, cv::COLOR_BGRA2GRAY);
+
+        // send metrics in socket
+        send(sock, reinterpret_cast<const char*>(&metrics), sizeof(metrics), 0);
+
+        // send bytes in socket
+        int frame_bytes = grayscale.total() * grayscale.elemSize();
+        send(sock, reinterpret_cast<const char*>(grayscale.data), frame_bytes, 0);
+
+        // Report fps
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsedSeconds = currentTime - startTime;
+        if (elapsedSeconds.count() >= 1.0) { // Check every second
+            double fps = frameCount / elapsedSeconds.count();
+            std::cout << "FPS: " << fps << std::endl;
+
+            frameCount = 0;
+            startTime = std::chrono::high_resolution_clock::now();
+        }
+    }
+}
+
+
+void recv_loop(int sock) {
+    while (!stop_capture) {
+        uint8_t action = 0;
+        recv(sock, (char*)&action, 1, 0);
+        std::cout << "Action: " << action << std::endl;        
+    }
+}
+
+
+int main() {
+
+    HWND hwnd = FindWindowA(NULL, TARGET_WINDOW_NAME);
+    if (hwnd != NULL) {
+        std::cout << "Window found!" << std::endl;
+    } else {
+        std::cout << "Window not found!" << std::endl;
+    }
+
+    auto rect = ScreenCapturer::GetClientRectangle(TARGET_WINDOW_NAME);
+    int x = rect.left;
+    int y = rect.top;
+    int w = rect.right - rect.left;
+    int h = rect.bottom - rect.top;
+
+    std::cout << x << std::endl;
+    std::cout << y << std::endl;
+    std::cout << w << std::endl;
+    std::cout << h << std::endl;
+
+    // Initialize Winsock
+    initialize_winsock();
+
+    // Create a socket
+    SOCKET sock = tcp_create_socket();
+    sockaddr_in server_address = make_address(SERVER_IP, PORT);
+    
+    // Connect to server
+    tcp_connect_to_server(sock, server_address);
+        
+    std::thread keyboard_thread(start_keyboard_listener);
+    std::thread send_thread(send_loop, sock, x, y, w, h);
+    std::thread recv_thread(recv_loop, sock);
+    
+    keyboard_thread.join();
+    send_thread.join();
+    recv_thread.join();
+
+    // Close the socket
+    close_socket(sock);
+    
+    // Cleanup Winsock
+    cleanup_winsock();
+
+    return 0;
+}

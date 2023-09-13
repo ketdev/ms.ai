@@ -4,12 +4,10 @@
 #include <map>
 #include <string>
 #include <algorithm>
-#include "CImg.h"
+#include <opencv2/opencv.hpp>
 
+#include "protocol.hpp"
 
-struct Metrics {
-    float hp, mp, exp;
-};
 
 struct MetricDimension {
     std::string name;
@@ -25,7 +23,7 @@ const std::vector<MetricDimension> METRIC_DIMENSIONS = {
     {"EXP", 3, 15, 0, "yellow-green"}
 };
 
-bool is_red(const BYTE* pixel) {
+bool is_red(const cv::Vec3b& pixel) {
     float red = pixel[2];
     float green = pixel[1];
     float blue = pixel[0];
@@ -38,7 +36,7 @@ bool is_red(const BYTE* pixel) {
     return blue_to_red_ratio < 0.7 && green_to_red_ratio < 0.7 && red / 255.0f > 0.5;
 }
 
-bool is_blue_green(const BYTE* pixel) {
+bool is_blue_green(const cv::Vec3b& pixel) {
     float red = pixel[2];
     //float green = pixel[1];
     float blue = pixel[0];
@@ -50,7 +48,7 @@ bool is_blue_green(const BYTE* pixel) {
     return red_to_blue_ratio < 0.7 && blue / 255.0f > 0.5;
 }
 
-bool is_yellow_green(const BYTE* pixel) {
+bool is_yellow_green(const cv::Vec3b& pixel) {
     float red = pixel[2];
     float green = pixel[1];
     float blue = pixel[0];
@@ -62,7 +60,7 @@ bool is_yellow_green(const BYTE* pixel) {
     return blue_to_green_ratio < 0.7 && green / 255.0f > 0.7 && red / 255.0f > 0.5;
 }
 
-Metrics get_metric_percentages(const cimg_library::CImg<unsigned char>& img_data, int frame_width, int frame_height) {
+Metrics get_metric_percentages(const cv::Mat& img_data, int frame_width, int frame_height) {
     Metrics metrics;
 
     for (const auto& metric : METRIC_DIMENSIONS) {
@@ -70,17 +68,20 @@ Metrics get_metric_percentages(const cimg_library::CImg<unsigned char>& img_data
         int right_margin = metric.right_margin;
         int bottom_margin = metric.bottom_margin;
 
-        int row_start_idx = (frame_width * (frame_height - bottom_margin) + left_margin) * 4; // 4 for BGRA
-        int row_end_idx = (frame_width * (frame_height - bottom_margin) + frame_width - right_margin) * 4;
+        int row_start_idx = frame_height - bottom_margin;
+        int col_start_idx = left_margin;
+        int col_end_idx = frame_width - right_margin;
 
         std::vector<bool> row_processed;
-        for (int i = row_start_idx; i < row_end_idx; i+=4) {
+        for (int i = col_start_idx; i < col_end_idx; i++) {
+            cv::Vec3b pixel = img_data.at<cv::Vec3b>(row_start_idx, i);
+
             if (metric.color == "red") {
-                row_processed.push_back(is_red(&img_data[i]));
+                row_processed.push_back(is_red(pixel));
             } else if (metric.color == "blue-green") {
-                row_processed.push_back(is_blue_green(&img_data[i]));
+                row_processed.push_back(is_blue_green(pixel));
             } else if (metric.color == "yellow-green") {
-                row_processed.push_back(is_yellow_green(&img_data[i]));
+                row_processed.push_back(is_yellow_green(pixel));
             }
         }
 
