@@ -1,6 +1,7 @@
 import socket
 import time
 import threading
+import zlib
 import numpy as np
 from struct import unpack
 from pynput import keyboard
@@ -16,19 +17,14 @@ from logic.debug_display import initialize_display, draw_frame, display_flip
 PORT = 12345
 
 # Environment
-FRAME_WIDTH = 400
-FRAME_HEIGHT = 225
-CAPTURE_TARGET_FPS = 20
+FRAME_WIDTH = 512
+FRAME_HEIGHT = 288
+CAPTURE_TARGET_FPS = 24
 FRAME_SIZE = FRAME_WIDTH * FRAME_HEIGHT
 
 # Packet Constants
-PACKET_SIZE = 45000 + 8
-NUMBER_OF_ROWS = FRAME_HEIGHT
-
-METRICS_TYPE = 0
-CHUNK_TYPE = 1
-
-METRICS_SIZE = 3 * 4  # Three float32 values
+HEADER_SIZE = 32
+MAX_PACKET_SIZE = 65507
 
 # Action space
 FRAMES_PER_STEP = 4
@@ -79,38 +75,31 @@ def start_keyboard_listener():
 
 def recv_packet(sock):
 
-    packet, addr = sock.recvfrom(PACKET_SIZE)
-    if len(packet) < PACKET_SIZE:
+    # Receive packet header first
+    packet, addr = sock.recvfrom(MAX_PACKET_SIZE)
+    if len(packet) < HEADER_SIZE:
         raise Exception("Incomplete packet received")
 
-    # print(f"Received packet from {addr}")
+    # Interpret header data
+    # float, float, float, uint64, uint64
+    packet_header = packet[:HEADER_SIZE]
+    hp, mp, exp, frame_number, length = unpack("fffQQ", packet_header)
 
-    # Interpret packet type (first 4 bytes) as integer
-    packet_type = packet[:4]
-    packet_type = unpack("i", packet_type)[0]
+    # Receive packet data
+    packet_data = packet[HEADER_SIZE:]
+    if len(packet_data) < length:
+        raise Exception("Incomplete packet received")
 
-    # If packet is a metrics packet, unpack the metrics
-    if packet_type == METRICS_TYPE:
-        metrics_data = packet[4:METRICS_SIZE+4]
-        metrics_array = unpack("fff", metrics_data)
-        metrics = {
-            "HP": metrics_array[0],
-            "MP": metrics_array[1],
-            "EXP": metrics_array[2]
-        }
-        return METRICS_TYPE, metrics, addr
-    
-    # If packet is a frame chunk packet, unpack the frame chunk
-    elif packet_type == CHUNK_TYPE:
-        row = packet[4:8]
-        row = unpack("i", row)[0]
-        data = packet[8:]
-        data = np.frombuffer(data, dtype=np.uint8)
-        chunk = (row, data)
-        return CHUNK_TYPE, chunk, addr
+    # decompress the packet data with zlib
+    packet_data = zlib.decompress(packet_data)
+
+    chunk8bit = unpack_4bit_to_8bit(packet_data)
+    frame = np.reshape(chunk8bit, (FRAME_HEIGHT, FRAME_WIDTH))
+
+    return addr, hp, mp, exp, frame_number, frame
 
 def unpack_4bit_to_8bit(packed_array):
-    unpacked_size = 2 * packed_array.size
+    unpacked_size = 2 * len(packed_array)
     unpacked_array = np.zeros(unpacked_size, dtype=np.uint8)
 
     for i, val in enumerate(packed_array):
@@ -126,38 +115,9 @@ def unpack_4bit_to_8bit(packed_array):
 
 def receive_frames_thread(sock):
 
-    # reconstruct the frame from chunks
-    frame_counter = 0
-    frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH), dtype=np.uint8)
-    metrics = None
-
     while not stop_capture:
-        ptype, data, addr = recv_packet(sock)
-
-        # If packet is a metrics packet, complete last frame and start a new frame
-        if ptype == METRICS_TYPE:
-
-            # complete last frame
-            if metrics is not None:
-                frames_queue.put((addr, frame_counter, frame, metrics))
-                # frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH), dtype=np.uint8)
-
-            # start a new frame
-            frame_counter += 1
-            metrics = data
-            print(metrics)
-
-        # If packet is a frame chunk packet, reconstruct the frame
-        if ptype == CHUNK_TYPE:
-            index, chunk4bit = data
-            chunk8bit = unpack_4bit_to_8bit(chunk4bit)
-
-            # chunk can be multiple rows of pixels, write to frame
-            row = index * NUMBER_OF_ROWS
-
-            # Write all rows of the chunk to the frame
-            for i in range(NUMBER_OF_ROWS):
-                frame[row + i] = chunk8bit[i*FRAME_WIDTH:(i+1)*FRAME_WIDTH]
+        addr, hp, mp, exp, frame_number, frame = recv_packet(sock)
+        frames_queue.put((addr, frame_number, frame, (hp, mp, exp)))
 
 
 ## ==================================================================
@@ -178,7 +138,7 @@ def process_frames_thread(sock, screen):
 
     frame_step = 0
     while not stop_capture:
-        addr, frame_counter, frame, metrics = frames_queue.get()
+        addr, frame_number, frame, (hp, mp, exp) = frames_queue.get()
         frame_step += 1
 
         # clear the screen
