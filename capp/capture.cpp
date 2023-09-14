@@ -158,12 +158,12 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
             cv::cvtColor(resizedImage, grayscale, cv::COLOR_BGRA2GRAY);
 
             // Convert to 4 bit
-            convertTo4BitBytes(grayscale, data4bit);
+            convertTo4BitBytes(grayscale, data4bit);  
 
             // cv::Mat gray4bit = convertTo4Bit(grayscale);
             // cv::Mat upscaled8bit = upscaleTo8Bit(gray4bit);
             // cv::imwrite("capture.bmp", upscaled8bit);
-            // exit(0);  
+            // exit(0);   
  
             // Send
             send_metrics(sock, server_address, metrics);

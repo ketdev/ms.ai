@@ -23,7 +23,7 @@ const std::vector<MetricDimension> METRIC_DIMENSIONS = {
     {"EXP", 3, 15, 0, "yellow-green"}
 };
 
-bool is_red(const cv::Vec3b& pixel) {
+bool is_red(const cv::Vec4b& pixel) {
     float red = pixel[2];
     float green = pixel[1];
     float blue = pixel[0];
@@ -36,7 +36,7 @@ bool is_red(const cv::Vec3b& pixel) {
     return blue_to_red_ratio < 0.7 && green_to_red_ratio < 0.7 && red / 255.0f > 0.5;
 }
 
-bool is_blue_green(const cv::Vec3b& pixel) {
+bool is_blue_green(const cv::Vec4b& pixel) {
     float red = pixel[2];
     //float green = pixel[1];
     float blue = pixel[0];
@@ -48,7 +48,7 @@ bool is_blue_green(const cv::Vec3b& pixel) {
     return red_to_blue_ratio < 0.7 && blue / 255.0f > 0.5;
 }
 
-bool is_yellow_green(const cv::Vec3b& pixel) {
+bool is_yellow_green(const cv::Vec4b& pixel) {
     float red = pixel[2];
     float green = pixel[1];
     float blue = pixel[0];
@@ -60,7 +60,7 @@ bool is_yellow_green(const cv::Vec3b& pixel) {
     return blue_to_green_ratio < 0.7 && green / 255.0f > 0.7 && red / 255.0f > 0.5;
 }
 
-Metrics get_metric_percentages(const cv::Mat& img_data, int frame_width, int frame_height) {
+Metrics get_metric_percentages(cv::Mat& img_data, int frame_width, int frame_height) {
     Metrics metrics;
 
     for (const auto& metric : METRIC_DIMENSIONS) {
@@ -74,7 +74,10 @@ Metrics get_metric_percentages(const cv::Mat& img_data, int frame_width, int fra
 
         std::vector<bool> row_processed;
         for (int i = col_start_idx; i < col_end_idx; i++) {
-            cv::Vec3b pixel = img_data.at<cv::Vec3b>(row_start_idx, i);
+            cv::Vec4b pixel = img_data.at<cv::Vec4b>(row_start_idx, i);
+
+            // // Debug: Overlaying a magenta color on the read pixels
+            // img_data.at<cv::Vec4b>(row_start_idx, i) = cv::Vec4b(255, 0, 255, 255); // Magenta color
 
             if (metric.color == "red") {
                 row_processed.push_back(is_red(pixel));
@@ -101,6 +104,10 @@ Metrics get_metric_percentages(const cv::Mat& img_data, int frame_width, int fra
             metrics.exp = value;
         }
     }
+
+    // // Saving the overlayed image for debugging purposes
+    // cv::imwrite("debug_img_data.bmp", img_data);
+    // exit(0);  
 
     return metrics;
 }
