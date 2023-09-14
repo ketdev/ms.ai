@@ -1,18 +1,12 @@
 #pragma once
 #include <memory>
 
-const int FRAME_WIDTH = 400; //640;
-const int FRAME_HEIGHT = 225; //360;
+const int FRAME_WIDTH = 512; //640;
+const int FRAME_HEIGHT = 288; //360;
 
-const int NUMBER_OF_ROWS = 225;
-const int CHUNK_SIZE = FRAME_WIDTH * NUMBER_OF_ROWS / 2; 
+const int MAX_BUFFER_SIZE = 65000;
 
 // Each byte has two 4-bit values
-
-enum PacketType {
-    METRICS,
-    CHUNK
-};
 
 struct Metrics {
     float hp;
@@ -20,15 +14,11 @@ struct Metrics {
     float exp;
 };
 
-struct ChunkData {
-    int index;
-    unsigned char chunk_data[CHUNK_SIZE];
+struct UDPPacket {
+    Metrics metrics;
+    uint64_t frame_number;
+    uint64_t length;
+    unsigned char data[MAX_BUFFER_SIZE];
 };
 
-struct UDPPacket {
-    PacketType type;
-    union {
-        Metrics header_data;
-        ChunkData chunk_data;
-    };
-};
+const int HEADER_SIZE = sizeof(UDPPacket) - MAX_BUFFER_SIZE;

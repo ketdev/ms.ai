@@ -20,7 +20,7 @@ OPENCV_LIBS    := -lopencv_world480
 # Flags, Libraries and Includes
 CFLAGS      := -Wall -O3 -march=native -flto
 LIBDIRS		:= $(OPENCV_LIBDIR)
-LIBS 		:= -flto -lws2_32 -lGdi32 -luser32 $(OPENCV_LIBS) 
+LIBS 		:= -flto -lws2_32 -lGdi32 -luser32 -lz $(OPENCV_LIBS) 
 INCLUDE     := -I$(SRCDIR) $(OPENCV_INCLUDE)
 
 

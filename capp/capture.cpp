@@ -3,6 +3,7 @@
 #include <iostream>
 #include <atomic>
 #include <thread>
+#include <zlib.h>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/opencv.hpp>
@@ -12,6 +13,7 @@
 #include "metrics.hpp"
 #include "protocol.hpp"
 #include "screen-capture.hpp"
+#include "compress.hpp"
 
 // ==================================================================
 // Constants
@@ -22,7 +24,7 @@ const int PORT = 12345;
 
 const char* const TARGET_WINDOW_NAME = "MapleStory"; // "Untitled - Notepad";
 
-const int CAPTURE_TARGET_FPS = 20;
+const int CAPTURE_TARGET_FPS = 24;
 
 // ==================================================================
 // Global Variables
@@ -85,39 +87,6 @@ void convertTo4BitBytes(const cv::Mat& grayscale8bit, std::vector<unsigned char>
     }
 }
 
-void send_metrics(int sock, const sockaddr_in& server_address,
-                  const Metrics& metrics) {
-    UDPPacket packet;
-    packet.type = METRICS;
-    packet.header_data = metrics;
-    udp_send_to_server(sock, server_address,
-                       reinterpret_cast<const char*>(&packet), sizeof(packet));
-}
-
-void send_chunks(SOCKET sock, const sockaddr_in& server_address, const std::vector<unsigned char>& data4bit) {
-    // Calculate total number of bytes for a full image
-    const int totalBytes = FRAME_WIDTH * FRAME_HEIGHT / 2; // Dividing by 2 because it's 4-bit
-
-    // Calculate total number of chunks required to send the image
-    const int totalChunks = totalBytes / CHUNK_SIZE;
-
-    for (int chunkIndex = 0; chunkIndex < totalChunks; ++chunkIndex) {
-        UDPPacket chunkPacket;
-        chunkPacket.type = CHUNK;
-        chunkPacket.chunk_data.index = chunkIndex; 
-
-        // Get a pointer to the start of the current chunk in the data4bit vector
-        const unsigned char* startPtr = &data4bit[chunkIndex * CHUNK_SIZE];
-
-        // Copy the required bytes into the chunk data
-        std::memcpy(chunkPacket.chunk_data.chunk_data, startPtr, CHUNK_SIZE);
-
-        // Send the chunk 
-        udp_send_to_server(sock, server_address, reinterpret_cast<const char*>(&chunkPacket), sizeof(chunkPacket));
-    }
-}
-
-
 // ==================================================================
 // Main Processes
 // ==================================================================
@@ -125,9 +94,11 @@ void send_chunks(SOCKET sock, const sockaddr_in& server_address, const std::vect
 void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
                int h) {
     try {
-        int frameCount = 0;
 
+        UDPPacket packet;
         ScreenCapturer capturer(x, y, w, h);
+
+        packet.frame_number = 0;
 
         // Preallocated buffers
         cv::Mat capturedImage;
@@ -135,24 +106,25 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
         cv::Mat grayscale(FRAME_HEIGHT, FRAME_WIDTH, CV_8UC1);
         std::vector<unsigned char> data4bit(FRAME_WIDTH * FRAME_HEIGHT / 2); // 4 bit
 
-        std::cout << "Sending chunks of size: " << sizeof(UDPPacket) << std::endl;
 
+        int frameCount = 0;
         auto desiredFrameTime = std::chrono::milliseconds(static_cast<int>(1000 / CAPTURE_TARGET_FPS));
         auto busyWaitThreshold = std::chrono::milliseconds(10);  // Adjust as needed
 
         auto startTime = std::chrono::high_resolution_clock::now();
         while (!stop_capture) {
             auto frameStartTime = std::chrono::high_resolution_clock::now();
+            packet.frame_number++;
             frameCount++;
 
             capturer.capture(capturedImage);
 
             // Calculate metrics
-            Metrics metrics = get_metric_percentages(capturedImage, w, h);
+            packet.metrics = get_metric_percentages(capturedImage, w, h);
 
             // Resize the image
             cv::resize(capturedImage, resizedImage, resizedImage.size());
-
+ 
             // Convert BGRA to Grayscale
             cv::Mat grayscale;
             cv::cvtColor(resizedImage, grayscale, cv::COLOR_BGRA2GRAY);
@@ -160,14 +132,22 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
             // Convert to 4 bit
             convertTo4BitBytes(grayscale, data4bit);  
 
+            // Compress bytes
+            uLongf length = MAX_BUFFER_SIZE;
+            if (compress(&packet.data[0], &length, &data4bit[0], data4bit.size()) != Z_OK) {
+                std::cerr << "Compression failed!" << std::endl;
+                continue;
+            }
+            packet.length = length;
+
             // cv::Mat gray4bit = convertTo4Bit(grayscale);
             // cv::Mat upscaled8bit = upscaleTo8Bit(gray4bit);
             // cv::imwrite("capture.bmp", upscaled8bit);
             // exit(0);   
- 
-            // Send
-            send_metrics(sock, server_address, metrics);
-            send_chunks(sock, server_address, data4bit);
+             
+            // Send the frame             
+            udp_send_to_server(sock, server_address, reinterpret_cast<const char*>(&packet), 
+            HEADER_SIZE + packet.length);
 
             // Wait until next frame
             auto frameEndTime = std::chrono::high_resolution_clock::now();
@@ -178,7 +158,7 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
 
             // Busy-wait loop
             while (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - frameStartTime) < desiredFrameTime) {}
-
+ 
             // Report fps
             if (frameCount == CAPTURE_TARGET_FPS) {
                 double fps = static_cast<double>(frameCount) / std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - startTime).count();
