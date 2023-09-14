@@ -1,48 +1,21 @@
+import random
 import socket
 import time
 import threading
 import zlib
 import numpy as np
+import struct
 from struct import unpack
 from pynput import keyboard
+from collections import deque
 from queue import Queue
 
-from logic.debug_display import initialize_display, draw_frame, display_flip
 
-## ==================================================================
-## Configurations
-## ==================================================================
-
-# Network
-PORT = 12345
-
-# Environment
-FRAME_WIDTH = 512
-FRAME_HEIGHT = 288
-CAPTURE_TARGET_FPS = 24
-FRAME_SIZE = FRAME_WIDTH * FRAME_HEIGHT
-
-# Packet Constants
-HEADER_SIZE = 32
-MAX_PACKET_SIZE = 65507
-
-# Action space
-FRAMES_PER_STEP = 4
-
-class Actions:
-    IDLE = 0
-    ATTACK = 1
-    LEFT = 2
-    RIGHT = 3
-    # UP = 3
-    # DOWN = 4
-    # JUMP = 5
-    _SIZE = 4
-
-MODEL_WEIGHTS_FILE = "model_weights.h5"
-
-
-
+from model.debug_display import initialize_display, display_loop, update_display, post_quit_event, close_display
+from model.config import PORT, FRAME_WIDTH, FRAME_HEIGHT, \
+    FRAME_PACKET_HEADER_SIZE, MAX_PACKET_SIZE, MAX_KEYS, NO_KEY_VALUE, \
+    DISPLAY_SCALE, BAR_HEIGHT, BAR_TEXT_WIDTH, FRAMES_PER_STEP, \
+    Actions, ACTION_TO_KEY_MAP, ACTION_NAMES
 
 ## ==================================================================
 ## Global Variables
@@ -64,39 +37,15 @@ def start_keyboard_listener():
         global stop_capture
         if key == keyboard.Key.esc:
             stop_capture = True
+            post_quit_event()
             return False
     with keyboard.Listener(on_press=on_key_press) as listener:
         listener.join()
 
 
 ## ==================================================================
-## Input Logic
+## Frame Input Logic
 ## ==================================================================
-
-def recv_packet(sock):
-
-    # Receive packet header first
-    packet, addr = sock.recvfrom(MAX_PACKET_SIZE)
-    if len(packet) < HEADER_SIZE:
-        raise Exception("Incomplete packet received")
-
-    # Interpret header data
-    # float, float, float, uint64, uint64
-    packet_header = packet[:HEADER_SIZE]
-    hp, mp, exp, frame_number, length = unpack("fffQQ", packet_header)
-
-    # Receive packet data
-    packet_data = packet[HEADER_SIZE:]
-    if len(packet_data) < length:
-        raise Exception("Incomplete packet received")
-
-    # decompress the packet data with zlib
-    packet_data = zlib.decompress(packet_data)
-
-    chunk8bit = unpack_4bit_to_8bit(packet_data)
-    frame = np.reshape(chunk8bit, (FRAME_HEIGHT, FRAME_WIDTH))
-
-    return addr, hp, mp, exp, frame_number, frame
 
 def unpack_4bit_to_8bit(packed_array):
     unpacked_size = 2 * len(packed_array)
@@ -114,51 +63,89 @@ def unpack_4bit_to_8bit(packed_array):
     return unpacked_array
 
 def receive_frames_thread(sock):
-
     while not stop_capture:
-        addr, hp, mp, exp, frame_number, frame = recv_packet(sock)
+        # Receive packet header first
+        packet, addr = sock.recvfrom(MAX_PACKET_SIZE)
+        if len(packet) < FRAME_PACKET_HEADER_SIZE:
+            raise Exception("Incomplete packet received")
+
+        # Interpret header data
+        # float, float, float, uint64, uint64
+        packet_header = packet[:FRAME_PACKET_HEADER_SIZE]
+        hp, mp, exp, frame_number, length = unpack("fffQQ", packet_header)
+
+        # Receive packet data
+        packet_data = packet[FRAME_PACKET_HEADER_SIZE:]
+        if len(packet_data) < length:
+            raise Exception("Incomplete packet received")
+
+        # decompress the packet data with zlib
+        packet_data = zlib.decompress(packet_data)
+
+        chunk8bit = unpack_4bit_to_8bit(packet_data)
+        frame = np.reshape(chunk8bit, (FRAME_HEIGHT, FRAME_WIDTH))
+
         frames_queue.put((addr, frame_number, frame, (hp, mp, exp)))
 
 
 ## ==================================================================
-## Action Logic
+## Model & Action Logic
 ## ==================================================================
 
-def get_action():
+def get_action_packet():
     # For the sake of simplicity, this function will just
-    # return a dummy action byte. Replace with your own logic!
-    dummy_action = b'0'
-    return dummy_action
+    # return a dummy action packet with two keys pressed. 
+    # Replace with your own logic!
+    
+    # Sample: VirtualKey with code 65 (A) and ScanKey with code 1
+    # keys = [(1, VK_LEFT), (0, KEY_JUMP)]
+    # keys = [(1, VK_RIGHT), (0, KEY_ATTACK)]
+    keys = []
+    
+    # Fill the rest of the packet with zeros (no keys)
+    while len(keys) < MAX_KEYS:
+        keys.append((0, 0))
+    
+    packet_data = b''.join(struct.pack('bb', key[0], key[1]) for key in keys)
+    return packet_data
 
-
-def send_action(sock, addr, action):
-    sock.sendto(action, addr)
+def send_action_packet(sock, addr):
+    action_packet = get_action_packet()
+    sock.sendto(action_packet, addr)
 
 def process_frames_thread(sock, screen):
-
     frame_step = 0
+
+    metrics = deque(maxlen=FRAMES_PER_STEP)
+    frames = deque(maxlen=FRAMES_PER_STEP)
+    action_vector = np.zeros(Actions._SIZE, dtype=np.float32)
+    action_index = 0 # picked action index
+
     while not stop_capture:
         addr, frame_number, frame, (hp, mp, exp) = frames_queue.get()
         frame_step += 1
 
-        # clear the screen
-        screen.fill((0, 0, 0))
-
-        # draw the frame
-        draw_frame(screen, frame)
-
+        # accumulate frames
+        frames.append(frame)
+        metrics.append((hp, mp, exp))
+        
         if frame_step >= FRAMES_PER_STEP:
-            action = get_action()
-            send_action(sock, addr, action)
+            # TODO: process frames
+
+            # get action vector (random for now)
+            action_vector = np.random.rand(Actions._SIZE)
+            action_vector = action_vector.astype(np.float32)
+            action_index = np.argmax(action_vector)
+            
+            send_action_packet(sock, addr)
             frame_step = 0
 
-        # update the screen
-        display_flip()
+        update_display(screen, frames, hp, mp, exp, action_vector, action_index)
+
 
 ## ==================================================================
 ## Main Processes
 ## ==================================================================
-
 
 def main():
     # Initialize the socket connection
@@ -166,18 +153,19 @@ def main():
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(('', PORT))
 
-    # Start the keyboard listener thread
-    keyboard_thread = threading.Thread(target=start_keyboard_listener)
-    keyboard_thread.start()
-
     # Initialize the game interface
-    screen = initialize_display(FRAME_WIDTH, FRAME_HEIGHT)
+    screen = initialize_display()
 
     # Start threads
+    keyboard_thread = threading.Thread(target=start_keyboard_listener)
     recv_thread = threading.Thread(target=receive_frames_thread, args=(s,))
     process_thread = threading.Thread(target=process_frames_thread, args=(s,screen,))
     recv_thread.start()
     process_thread.start()
+    keyboard_thread.start()
+
+    # Start the display loop
+    display_loop()
 
     # Wait for threads to finish
     recv_thread.join()
@@ -186,6 +174,9 @@ def main():
 
     # Close the connection
     s.close()
+
+    # Close the display
+    close_display()
 
 
 if __name__ == '__main__':
