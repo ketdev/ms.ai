@@ -211,7 +211,7 @@ void recv_loop(SOCKET sock, sockaddr_in server_address) {
         }
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';
-    }
+    } 
 }
 
 int main() {
