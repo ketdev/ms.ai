@@ -104,7 +104,7 @@ void send_chunks(SOCKET sock, const sockaddr_in& server_address, const std::vect
     for (int chunkIndex = 0; chunkIndex < totalChunks; ++chunkIndex) {
         UDPPacket chunkPacket;
         chunkPacket.type = CHUNK;
-        chunkPacket.chunk_data.row_index = chunkIndex; 
+        chunkPacket.chunk_data.index = chunkIndex; 
 
         // Get a pointer to the start of the current chunk in the data4bit vector
         const unsigned char* startPtr = &data4bit[chunkIndex * CHUNK_SIZE];

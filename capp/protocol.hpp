@@ -21,7 +21,7 @@ struct Metrics {
 };
 
 struct ChunkData {
-    int row_index;
+    int index;
     unsigned char chunk_data[CHUNK_SIZE];
 };
 
