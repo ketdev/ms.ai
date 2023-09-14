@@ -19,17 +19,17 @@ MEMORY_SIZE = 2000
 
 CONVOLUTIONAL_LAYERS = [
     {
-        "filters": 32,
+        "filters": 16,
         "kernel_size": (8, 8),
         "strides": (4, 4),
     },
     {
-        "filters": 64,
+        "filters": 32,
         "kernel_size": (4, 4),
         "strides": (2, 2),
     },
     {
-        "filters": 64,
+        "filters": 32,
         "kernel_size": (3, 3),
         "strides": (1, 1),
     },
@@ -37,7 +37,13 @@ CONVOLUTIONAL_LAYERS = [
 
 DENSE_LAYERS = [
     {
-        "units": 512,
+        "units": 128,
+    },
+    {
+        "units": 128,
+    },
+    {
+        "units": 128,
     },
 ]
 

@@ -10,12 +10,12 @@ from pynput import keyboard
 from collections import deque
 from queue import Queue
 
+from model.config import PORT, FRAME_WIDTH, FRAME_HEIGHT, \
+    FRAME_PACKET_HEADER_SIZE, MAX_PACKET_SIZE, MAX_KEYS, \
+    FRAMES_PER_STEP, Actions, ACTION_TO_KEY_MAP
 
 from model.debug_display import initialize_display, display_loop, update_display, post_quit_event, close_display
-from model.config import PORT, FRAME_WIDTH, FRAME_HEIGHT, \
-    FRAME_PACKET_HEADER_SIZE, MAX_PACKET_SIZE, MAX_KEYS, NO_KEY_VALUE, \
-    DISPLAY_SCALE, BAR_HEIGHT, BAR_TEXT_WIDTH, FRAMES_PER_STEP, \
-    Actions, ACTION_TO_KEY_MAP, ACTION_NAMES
+from model.model_interface import init_model_interface, reward_model, get_actions, replay_learning, model_stop
 
 ## ==================================================================
 ## Global Variables
@@ -92,25 +92,18 @@ def receive_frames_thread(sock):
 ## Model & Action Logic
 ## ==================================================================
 
-def get_action_packet():
-    # For the sake of simplicity, this function will just
-    # return a dummy action packet with two keys pressed. 
-    # Replace with your own logic!
-    
-    # Sample: VirtualKey with code 65 (A) and ScanKey with code 1
-    # keys = [(1, VK_LEFT), (0, KEY_JUMP)]
-    # keys = [(1, VK_RIGHT), (0, KEY_ATTACK)]
+def send_action_packet(sock, addr, actions_toggle):
+    # translate actions to keys
     keys = []
-    
+    for action_index, action in enumerate(actions_toggle):
+        if action:
+            keys.append(ACTION_TO_KEY_MAP[action_index])
+
     # Fill the rest of the packet with zeros (no keys)
     while len(keys) < MAX_KEYS:
         keys.append((0, 0))
-    
-    packet_data = b''.join(struct.pack('bb', key[0], key[1]) for key in keys)
-    return packet_data
 
-def send_action_packet(sock, addr):
-    action_packet = get_action_packet()
+    action_packet = b''.join(struct.pack('bb', key[0], key[1]) for key in keys)
     sock.sendto(action_packet, addr)
 
 def process_frames_thread(sock, screen):
@@ -121,6 +114,18 @@ def process_frames_thread(sock, screen):
     action_vector = np.zeros(Actions._SIZE, dtype=np.float32)
     action_index = 0 # picked action index
 
+    # Initialize counters
+    frame_count = 0
+    prev_frames = None
+    prev_action_index = None
+
+    # Actions toggle
+    actions_toggle = np.zeros(Actions._SIZE, dtype=np.uint8)
+
+    # Count frames per second
+    fps = 0
+    last_time = time.time()
+
     while not stop_capture:
         addr, frame_number, frame, (hp, mp, exp) = frames_queue.get()
         frame_step += 1
@@ -128,19 +133,43 @@ def process_frames_thread(sock, screen):
         # accumulate frames
         frames.append(frame)
         metrics.append((hp, mp, exp))
-        
+                    
         if frame_step >= FRAMES_PER_STEP:
-            # TODO: process frames
 
-            # get action vector (random for now)
-            action_vector = np.random.rand(Actions._SIZE)
-            action_vector = action_vector.astype(np.float32)
-            action_index = np.argmax(action_vector)
-            
-            send_action_packet(sock, addr)
+            # turn frames to numpy array
+            frames_array = np.array(frames, dtype=np.uint8)   
+            frames_array = np.transpose(frames_array, (1, 2, 0))       
+
+            # Reward the model for previous action
+            reward_model(prev_frames, prev_action_index, metrics, frames_array)
+
+            # Process the frames and get the next action
+            action_vector, action_index = get_actions(frames_array)
+
+            # Toggle actions
+            actions_toggle[action_index] = not actions_toggle[action_index]
+
+            # Send the action packet to the game
+            send_action_packet(sock, addr, actions_toggle)
+
+            # Update counters
+            prev_frames = frames_array
+            prev_action_index = action_index
+            frame_count += 1
             frame_step = 0
 
+            # Signal replay learning if needed
+            replay_learning(frame_count)
+
+        # Update the display
         update_display(screen, frames, hp, mp, exp, action_vector, action_index)
+
+        # Report FPS
+        if frame_count % 100 == 0:
+            cur_time = time.time()
+            fps = 100 / (cur_time - last_time)
+            last_time = cur_time
+            print("FPS: {}".format(fps))
 
 
 ## ==================================================================
@@ -155,6 +184,9 @@ def main():
 
     # Initialize the game interface
     screen = initialize_display()
+
+    # Initialize model training
+    init_model_interface()
 
     # Start threads
     keyboard_thread = threading.Thread(target=start_keyboard_listener)
