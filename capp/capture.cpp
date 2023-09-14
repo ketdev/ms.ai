@@ -22,7 +22,9 @@
 const char* const SERVER_IP = "10.0.0.6";
 const int PORT = 12345;
 
-const char* const TARGET_WINDOW_NAME = "MapleStory"; // "Untitled - Notepad";
+const char* const TARGET_WINDOW_NAME = "*Untitled - Notepad";
+// const char* const TARGET_WINDOW_NAME = "screenshot_crop.png - Paint";
+// const char* const TARGET_WINDOW_NAME = "MapleStory";
 
 const int CAPTURE_TARGET_FPS = 24;
 
@@ -42,6 +44,7 @@ void start_keyboard_listener() {
     while (!stop_capture) {
         if (GetAsyncKeyState(VK_ESCAPE)) {
             stop_capture = true;
+            exit(0);
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -49,20 +52,8 @@ void start_keyboard_listener() {
 }
 
 // ==================================================================
-// Utils
+// Capture Thread
 // ==================================================================
-
-cv::Mat convertTo4Bit(const cv::Mat& grayscale8bit) {
-    cv::Mat grayscale4bit;
-    grayscale8bit.convertTo(grayscale4bit, CV_8U, 1.0/16.0);
-    return grayscale4bit;
-}
-
-cv::Mat upscaleTo8Bit(const cv::Mat& grayscale4bit) {
-    cv::Mat upscaled8bit;
-    grayscale4bit.convertTo(upscaled8bit, CV_8U, 16.0);
-    return upscaled8bit;
-}
 
 void convertTo4BitBytes(const cv::Mat& grayscale8bit, std::vector<unsigned char>& output) {
     const uchar* src = grayscale8bit.ptr<uchar>();
@@ -87,15 +78,11 @@ void convertTo4BitBytes(const cv::Mat& grayscale8bit, std::vector<unsigned char>
     }
 }
 
-// ==================================================================
-// Main Processes
-// ==================================================================
-
 void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
                int h) {
     try {
 
-        UDPPacket packet;
+        FramePacket packet = { 0 };
         ScreenCapturer capturer(x, y, w, h);
 
         packet.frame_number = 0;
@@ -106,7 +93,7 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
         cv::Mat grayscale(FRAME_HEIGHT, FRAME_WIDTH, CV_8UC1);
         std::vector<unsigned char> data4bit(FRAME_WIDTH * FRAME_HEIGHT / 2); // 4 bit
 
-
+        // FPS values
         int frameCount = 0;
         auto desiredFrameTime = std::chrono::milliseconds(static_cast<int>(1000 / CAPTURE_TARGET_FPS));
         auto busyWaitThreshold = std::chrono::milliseconds(10);  // Adjust as needed
@@ -129,6 +116,9 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
             cv::Mat grayscale;
             cv::cvtColor(resizedImage, grayscale, cv::COLOR_BGRA2GRAY);
 
+            // cv::imwrite("capture.bmp", upscaled8bit);
+            // exit(0);   
+             
             // Convert to 4 bit
             convertTo4BitBytes(grayscale, data4bit);  
 
@@ -140,14 +130,9 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
             }
             packet.length = length;
 
-            // cv::Mat gray4bit = convertTo4Bit(grayscale);
-            // cv::Mat upscaled8bit = upscaleTo8Bit(gray4bit);
-            // cv::imwrite("capture.bmp", upscaled8bit);
-            // exit(0);   
-             
             // Send the frame             
             udp_send_to_server(sock, server_address, reinterpret_cast<const char*>(&packet), 
-            HEADER_SIZE + packet.length);
+            FRAME_PACKET_HEADER_SIZE + packet.length);
 
             // Wait until next frame
             auto frameEndTime = std::chrono::high_resolution_clock::now();
@@ -172,27 +157,73 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
     }
 }
 
+// ==================================================================
+// Action Thread
+// ==================================================================
+
+void processReceivedKeys(const ActionPacket& packet, std::set<Key>& pressedKeys) {
+    // Extract keys from packet and put them in a set
+    std::set<Key> receivedKeys;
+    for (int i = 0; i < MAX_KEYS; ++i) {
+        if (packet.keys[i].keyCode != NO_KEY_VALUE) {
+            receivedKeys.insert(packet.keys[i]);
+        }
+    }
+
+    // Press newly added keys
+    for (const auto& key : receivedKeys) {
+        if (pressedKeys.find(key) == pressedKeys.end()) {
+            if (key.isVirtualKey) {
+                press_virtual_key((WORD)key.keyCode);
+            } else {
+                press_scan_key((WORD)key.keyCode);
+            }
+            pressedKeys.insert(key);
+        }
+    }
+
+    // Release removed keys
+    for (auto it = pressedKeys.begin(); it != pressedKeys.end(); ) {
+        if (receivedKeys.find(*it) == receivedKeys.end()) {
+            if (it->isVirtualKey) {
+                release_virtual_key((WORD)it->keyCode);
+            } else {
+                release_scan_key((WORD)it->keyCode);
+            }
+            it = pressedKeys.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 void recv_loop(SOCKET sock, sockaddr_in server_address) {
     try {
         sockaddr_in from_address;
         int from_address_len = sizeof(from_address);
 
+        // Keep track of currently pressed keys
+        std::set<Key> pressedKeys;
+
         while (!stop_capture) {
-            uint8_t action = 0;
+            ActionPacket actionPacket = { 0 };
 
             int bytes_received = udp_receive_from_server(
-                sock, (char*)&action, 1, &from_address, &from_address_len);
+                sock, (char*)&actionPacket, sizeof(ActionPacket), &from_address, &from_address_len);
 
-            // if (bytes_received > 0) {
-            //     std::cout << "Action: " << (int)action << " from "
-            //               << inet_ntoa(from_address.sin_addr) << ":"
-            //               << ntohs(from_address.sin_port) << std::endl;
-            // }
+            if (bytes_received > 0) {
+                processReceivedKeys(actionPacket, pressedKeys);
+            }
         }
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';
     } 
 }
+
+
+// ==================================================================
+// Main Processes
+// ==================================================================
 
 int main() {
     try {
