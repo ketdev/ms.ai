@@ -24,11 +24,22 @@ NO_KEY_VALUE = 0
 
 MODEL_WEIGHTS_FILE = "model_weights.h5"
 BATCH_SIZE = 32
-UPDATE_TARGET_MODEL_EVERY = 1000
-SAVE_WEIGHTS_EVERY = 5000
+UPDATE_TARGET_MODEL_EVERY = 20
+SAVE_WEIGHTS_EVERY = 100
 
 FRAMES_PER_STEP = 4
 
+## ==================================================================
+## Training Constants
+## ==================================================================
+
+GAMMA = 0.95 # discount rate
+EPSILON = 1.0 # exploration rate
+EPSILON_MIN = 0.01
+EPSILON_DECAY = 0.9985
+LEARNING_RATE = 0.002
+
+MEMORY_SIZE = 1000
 
 ## ==================================================================
 ## Action space
@@ -37,12 +48,12 @@ FRAMES_PER_STEP = 4
 class Actions:
     IDLE = 0
     ATTACK = 1
-    JUMP = 2
-    LEFT = 3
-    RIGHT = 4
-    DOWN = 5
+    # JUMP = 2
+    LEFT = 2
+    RIGHT = 3
+    # DOWN = 5
     # UP = 6
-    _SIZE = 6
+    _SIZE = 4
 
 # Action Virtual key codes
 VK_LEFT = 0x25
@@ -57,22 +68,60 @@ KEY_ATTACK = 0x20 # 'D'
 ACTION_TO_KEY_MAP = {
     Actions.IDLE: (0, NO_KEY_VALUE),
     Actions.ATTACK: (0, KEY_ATTACK),
-    Actions.JUMP: (0, KEY_JUMP),
+    # Actions.JUMP: (0, KEY_JUMP),
     Actions.LEFT: (1, VK_LEFT),
     Actions.RIGHT: (1, VK_RIGHT),
-    Actions.DOWN: (1, VK_DOWN),
+    # Actions.DOWN: (1, VK_DOWN),
     # Actions.UP: (1, VK_UP),
 }
 
 ACTION_NAMES = {
     Actions.IDLE: "IDLE",
     Actions.ATTACK: "ATTACK",
-    Actions.JUMP: "JUMP",
+    # Actions.JUMP: "JUMP",
     Actions.LEFT: "LEFT",
     Actions.RIGHT: "RIGHT",
-    Actions.DOWN: "DOWN",
+    # Actions.DOWN: "DOWN",
     # Actions.UP: "UP",
 }
+
+## ==================================================================
+## Model Architecture
+## ==================================================================
+
+CONVOLUTIONAL_LAYERS = [
+    {
+        "filters": 32,
+        "kernel_size": (8, 8),
+        "strides": (4, 4),
+    },
+    {
+        "filters": 64,
+        "kernel_size": (4, 4),
+        "strides": (2, 2),
+    },
+    {
+        "filters": 64,
+        "kernel_size": (3, 3),
+        "strides": (1, 1),
+    },
+]
+
+DENSE_LAYERS = [
+    {
+        "units": 256,
+        "activation": "relu"
+    },
+    {
+        "units": 256,
+        "activation": "relu"
+    },
+    {
+        "units": 128,
+        "activation": "relu"
+    }
+]
+
 
 ## ==================================================================
 ## Display
@@ -87,3 +136,5 @@ MP_COLOR = (6, 181, 223)
 EXP_COLOR = (170, 204, 0)
 ACTION_COLOR = (0, 37, 203)
 ACTION_PICKED_COLOR = (173, 216, 230)
+
+## ==================================================================

@@ -24,6 +24,12 @@ def display_loop():
         if event.type == pygame.QUIT:
             break
 
+def display_event_handle():
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            return True
+    return False
+
 def post_quit_event():
     pygame.event.post(pygame.event.Event(pygame.QUIT))
 
@@ -55,9 +61,9 @@ def update_display(screen, frames, hp, mp, exp, action_vector, action_index):
     bar_offset = FRAME_HEIGHT * DISPLAY_SCALE * (1+1/4) + 1
     bar_width = FRAME_WIDTH * DISPLAY_SCALE - BAR_TEXT_WIDTH - 1
 
-    _draw_h_bar(screen, 0, bar_offset + 0 * BAR_HEIGHT + 1, bar_width, BAR_HEIGHT - 2, 1, HP_COLOR)
-    _draw_h_bar(screen, 0, bar_offset + 1 * BAR_HEIGHT + 1, bar_width, BAR_HEIGHT - 2, 1, MP_COLOR)
-    _draw_h_bar(screen, 0, bar_offset + 2 * BAR_HEIGHT + 1, bar_width, BAR_HEIGHT - 2, 1, EXP_COLOR)
+    _draw_h_bar(screen, 0, bar_offset + 0 * BAR_HEIGHT + 1, bar_width, BAR_HEIGHT - 2, hp, HP_COLOR)
+    _draw_h_bar(screen, 0, bar_offset + 1 * BAR_HEIGHT + 1, bar_width, BAR_HEIGHT - 2, mp, MP_COLOR)
+    _draw_h_bar(screen, 0, bar_offset + 2 * BAR_HEIGHT + 1, bar_width, BAR_HEIGHT - 2, exp, EXP_COLOR)
 
     _draw_text(screen, "HP: {:.2f}%".format(hp*100), bar_width + 3, bar_offset + 0 * BAR_HEIGHT, BAR_HEIGHT - 2, HP_COLOR)
     _draw_text(screen, "MP: {:.2f}%".format(mp*100), bar_width + 3, bar_offset + 1 * BAR_HEIGHT, BAR_HEIGHT - 2, MP_COLOR)
@@ -69,16 +75,18 @@ def update_display(screen, frames, hp, mp, exp, action_vector, action_index):
     actions_x_offset = FRAME_WIDTH * DISPLAY_SCALE - BAR_TEXT_WIDTH
     actions_height = FRAME_HEIGHT * DISPLAY_SCALE / 4 - 1
 
-    # max normalize the action vector
-    max_val = np.max(action_vector)
-    if max_val != 0:  # Avoid divide by zero
-        probabilities = action_vector / max_val
+    # min-max normalize the action vector
+    min_val, max_val = np.min(action_vector), np.max(action_vector)
+    if min_val != 0 and max_val != 0:  # Avoid divide by zero
+        probabilities = (action_vector - min_val) / (max_val - min_val)
     else:
         probabilities = action_vector
     # make sure the sum of the probabilities is 1
     prob_sum = np.sum(probabilities)
     if prob_sum > 0:
         probabilities /= prob_sum
+    # make from 0.1 to 1
+    probabilities = probabilities * 0.9 + 0.1
 
     for i in range(Actions._SIZE):
         action_width = BAR_TEXT_WIDTH / Actions._SIZE - 2
@@ -95,9 +103,6 @@ def update_display(screen, frames, hp, mp, exp, action_vector, action_index):
         _draw_text(screen, ACTION_NAMES[i], action_x, action_y + action_height + 1, actions_text_size, (255, 255, 255))
 
     _display_flip()
-
-
-
 
 ## ==================================================================
 
@@ -129,3 +134,24 @@ def _draw_v_bar(screen, x, y, w, h, percentage, color):
 def _display_flip():
     pygame.display.flip()
 
+
+## ==================================================================
+## Display Entry
+## ==================================================================
+
+def display_entry(stop_event, display_queue):
+    screen = initialize_display()
+
+    while not stop_event.is_set():
+        try:
+            # get the next frame to display
+            frames, (hp, mp, exp), action_vector, action_index = display_queue.get(timeout=0.1)
+            # update the display
+            update_display(screen, frames, hp, mp, exp, action_vector, action_index)
+
+            # check for quit event
+            display_event_handle()
+        except:
+            continue
+            
+    close_display()
