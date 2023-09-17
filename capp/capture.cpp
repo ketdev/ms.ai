@@ -142,7 +142,7 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
         FramePacket packet = { 0 };
         ScreenCapturer capturer(x, y, w, h);
 
-        packet.frame_number = 0;
+        packet.frameNumber = 0;
 
         // Preallocated buffers
         cv::Mat capturedImage;
@@ -158,7 +158,7 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
         auto startTime = std::chrono::high_resolution_clock::now();
         while (!stop_capture) {
             auto frameStartTime = std::chrono::high_resolution_clock::now();
-            packet.frame_number++;
+            packet.frameNumber++;
             frameCount++;
 
             capturer.capture(capturedImage);

@@ -22,10 +22,14 @@ struct KeyboardInput {
     
     // Adding operators for std::set
     bool operator<(const Key& other) const {
-        return std::tie(isVirtualKey, keyCode, isExtended) < std::tie(other.isVirtualKey, other.keyCode, other.isExtended);
+        return isVirtualKey < other.isVirtualKey 
+            || isExtended < other.isExtended
+            || keyCode < other.keyCode;
     }
     bool operator==(const Key& other) const {
-        return isVirtualKey == other.isVirtualKey && keyCode == other.keyCode && isExtended == other.isExtended;
+        return isVirtualKey == other.isVirtualKey 
+            && isExtended == other.isExtended
+            && keyCode == other.keyCode;
     }
 };
 
