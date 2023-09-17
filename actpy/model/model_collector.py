@@ -50,6 +50,9 @@ def model_collector_entry(stop_event, frame_queue, action_queue, experience_queu
     action_index = 0 # picked action index
     reward = 0
 
+    # Current actions toggle state
+    actions_toggle = np.zeros(Actions._SIZE, dtype=np.uint8)
+
     prev_frames = None
     prev_action_index = None
     prev_metrics = None
@@ -89,15 +92,18 @@ def model_collector_entry(stop_event, frame_queue, action_queue, experience_queu
                 experience_queue.put((prev_frames, prev_action_index, reward, frames_array, False))
 
             # Get action from DQN agent
-            action_vector = model.predict(frames_array)[0]
+            action_vector = model.predict([frames_array, actions_toggle])[0]
             action_index = epsilon_greedy_policy(action_vector, epsilon)            
             if epsilon > EPSILON_MIN:
                 epsilon *= EPSILON_DECAY
             else:
                 print("=== EPSILON MIN REACHED ===")
             
+            # Toggle action
+            actions_toggle[action_index] = 1 - actions_toggle[action_index]
+
             # Queue action for the game
-            action_queue.put((addr, action_index))
+            action_queue.put((addr, actions_toggle))
 
             # Update counters
             prev_frames = frames_array

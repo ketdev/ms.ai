@@ -22,9 +22,8 @@
 const char* const SERVER_IP = "10.0.0.6";
 const int PORT = 12345;
 
-const char* const TARGET_WINDOW_NAME = "*Untitled - Notepad";
-// const char* const TARGET_WINDOW_NAME = "screenshot_crop.png - Paint";
-// const char* const TARGET_WINDOW_NAME = "MapleStory";
+// const char* const TARGET_WINDOW_NAME = "*Untitled - Notepad";
+const char* const TARGET_WINDOW_NAME = "MapleStory";
 
 const int CAPTURE_TARGET_FPS = 24;
 
@@ -35,6 +34,8 @@ const int CAPTURE_TARGET_FPS = 24;
 // Global stop flag
 std::atomic<bool> stop_capture(false);
 
+// Global state to hold key presses
+std::set<KeyboardInput> pressedKeys;
 
 // ==================================================================
 // Keyboard Stop Condition (press ESC to stop)
@@ -50,6 +51,43 @@ void start_keyboard_listener() {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
+
+
+// ==================================================================
+// Keyboard Low Level Hook
+// ==================================================================
+
+LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION) {
+        KBDLLHOOKSTRUCT* kb = (KBDLLHOOKSTRUCT*)lParam;
+
+        // Capture virtual keys
+        KeyboardInput key;
+        key.isExtended = (kb->flags & LLKHF_EXTENDED) != 0;
+        key.keyCode = static_cast<uint8_t>(kb->vkCode); // for virtual keys
+
+        if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+            key.isVirtualKey = 1;
+            pressedKeys.insert(key);
+        } else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+            key.isVirtualKey = 1;
+            pressedKeys.erase(key);
+        }
+
+        // For scan codes, we can do similar but with:
+        key.keyCode = static_cast<uint8_t>(kb->scanCode); 
+        key.isVirtualKey = 0;
+
+        if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+            pressedKeys.insert(key);
+        } else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+            pressedKeys.erase(key);
+        }
+    }
+
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
 
 // ==================================================================
 // Capture Thread
@@ -75,6 +113,25 @@ void convertTo4BitBytes(const cv::Mat& grayscale8bit, std::vector<unsigned char>
     if (totalPixels & 1) {
         uchar pixel1 = src[bulkPixels] >> 4;
         *dst = (pixel1 << 4); 
+    }
+}
+
+void fillPacketWithKeys(FramePacket &packet, const std::set<Key> &pressedKeys) {
+    // Clear previous keys
+    for (int i = 0; i < MAX_PRESSED_KEYS; ++i) {
+        packet.pressedKeys[i] = {0, 0, 0};
+    }
+
+    size_t numKeysToCopy = std::min(pressedKeys.size(), MAX_PRESSED_KEYS);
+
+    auto it = pressedKeys.begin();
+    for (size_t i = 0; i < numKeysToCopy; ++i) {
+        packet.pressedKeys[i] = *it;
+        ++it;
+    }
+
+    if (pressedKeys.size() > MAX_PRESSED_KEYS) {
+        std::cerr << "Warning: More keys pressed than can be sent in the packet. Overflow detected!" << std::endl;
     }
 }
 
@@ -108,6 +165,18 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
 
             // Calculate metrics
             packet.metrics = get_metric_percentages(capturedImage, w, h);
+
+            // Populate the packet with pressed keys
+            fillPacketWithKeys(packet, pressedKeys);
+
+            // Print keys pressed
+            for (int i = 0; i < MAX_PRESSED_KEYS; ++i) {
+                if (packet.pressedKeys[i].isVirtualKey) {
+                    std::cout << "Virtual Key: " << (int)packet.pressedKeys[i].keyCode << std::endl;
+                } else {
+                    std::cout << "Scan Code: " << (int)packet.pressedKeys[i].keyCode << std::endl;
+                }
+            }
 
             // Resize the image
             cv::resize(capturedImage, resizedImage, resizedImage.size());
@@ -248,6 +317,9 @@ int main() {
         // Initialize Winsock
         initialize_winsock();
 
+        // Start keyboard hook
+        HHOOK keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
+
         // Create a socket
         SOCKET sock = udp_create_socket();
         sockaddr_in server_address = make_address(SERVER_IP, PORT);
@@ -259,6 +331,9 @@ int main() {
         keyboard_thread.join();
         send_thread.join();
         recv_thread.join();
+
+        // Stop keyboard hook
+        UnhookWindowsHookEx(keyboardHook);
 
         // Close the socket
         close_socket(sock);
