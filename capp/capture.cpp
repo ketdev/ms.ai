@@ -116,9 +116,9 @@ void convertTo4BitBytes(const cv::Mat& grayscale8bit, std::vector<unsigned char>
     }
 }
 
-void fillPacketWithKeys(FramePacket &packet, const std::set<Key> &pressedKeys) {
+void fillPacketWithKeys(FramePacket &packet, const std::set<KeyboardInput> &pressedKeys) {
     // Clear previous keys
-    for (int i = 0; i < MAX_PRESSED_KEYS; ++i) {
+    for (size_t i = 0; i < MAX_PRESSED_KEYS; ++i) {
         packet.pressedKeys[i] = {0, 0, 0};
     }
 
@@ -135,8 +135,7 @@ void fillPacketWithKeys(FramePacket &packet, const std::set<Key> &pressedKeys) {
     }
 }
 
-void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
-               int h) {
+void send_loop(int sock, sockaddr_in server_address, int x, int y, int w, int h) {
     try {
 
         FramePacket packet = { 0 };
@@ -168,15 +167,6 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
 
             // Populate the packet with pressed keys
             fillPacketWithKeys(packet, pressedKeys);
-
-            // Print keys pressed
-            for (int i = 0; i < MAX_PRESSED_KEYS; ++i) {
-                if (packet.pressedKeys[i].isVirtualKey) {
-                    std::cout << "Virtual Key: " << (int)packet.pressedKeys[i].keyCode << std::endl;
-                } else {
-                    std::cout << "Scan Code: " << (int)packet.pressedKeys[i].keyCode << std::endl;
-                }
-            }
 
             // Resize the image
             cv::resize(capturedImage, resizedImage, resizedImage.size());
@@ -230,12 +220,12 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w,
 // Action Thread
 // ==================================================================
 
-void processReceivedKeys(const ActionPacket& packet, std::set<Key>& pressedKeys) {
+void processReceivedKeys(const ActionPacket& packet, std::set<KeyboardInput>& pressedKeys) {
     // Extract keys from packet and put them in a set
-    std::set<Key> receivedKeys;
-    for (int i = 0; i < MAX_KEYS; ++i) {
-        if (packet.keys[i].keyCode != NO_KEY_VALUE) {
-            receivedKeys.insert(packet.keys[i]);
+    std::set<KeyboardInput> receivedKeys;
+    for (size_t i = 0; i < MAX_PRESSED_KEYS; ++i) {
+        if (packet.pressedKeys[i].keyCode != NO_KEY_VALUE) {
+            receivedKeys.insert(packet.pressedKeys[i]);
         }
     }
 
@@ -272,7 +262,7 @@ void recv_loop(SOCKET sock, sockaddr_in server_address) {
         int from_address_len = sizeof(from_address);
 
         // Keep track of currently pressed keys
-        std::set<Key> pressedKeys;
+        std::set<KeyboardInput> pressedKeys;
 
         while (!stop_capture) {
             ActionPacket actionPacket = { 0 };
@@ -293,6 +283,7 @@ void recv_loop(SOCKET sock, sockaddr_in server_address) {
 // ==================================================================
 // Main Processes
 // ==================================================================
+
 
 int main() {
     try {
@@ -317,8 +308,14 @@ int main() {
         // Initialize Winsock
         initialize_winsock();
 
-        // Start keyboard hook
-        HHOOK keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
+        // Setup keyboard hook        
+        HHOOK hHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
+        if (!hHook) {
+            DWORD error = GetLastError();
+            CHAR buffer[255];
+            sprintf(buffer, "SetWindowsHookEx failed with error: %lu", error);
+            OutputDebugString(buffer);
+        }
 
         // Create a socket
         SOCKET sock = udp_create_socket();
@@ -327,13 +324,20 @@ int main() {
         std::thread keyboard_thread(start_keyboard_listener);
         std::thread send_thread(send_loop, sock, server_address, x, y, w, h);
         std::thread recv_thread(recv_loop, sock, server_address);
+    
+        // Start a message loop for catching key events
+        MSG msg;
+        while (!stop_capture && GetMessage(&msg, NULL, 0, 0)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
 
         keyboard_thread.join();
         send_thread.join();
         recv_thread.join();
 
-        // Stop keyboard hook
-        UnhookWindowsHookEx(keyboardHook);
+        // Remove keyboard hook
+        UnhookWindowsHookEx(hHook);
 
         // Close the socket
         close_socket(sock);

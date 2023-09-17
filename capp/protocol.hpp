@@ -6,7 +6,7 @@ const int FRAME_WIDTH = 512; //640;
 const int FRAME_HEIGHT = 288; //360;
 
 const int MAX_BUFFER_SIZE = 65000;
-const int MAX_PRESSED_KEYS = 10;
+const size_t MAX_PRESSED_KEYS = 16;
 const char NO_KEY_VALUE = 0;
 
 struct Metrics {
@@ -21,12 +21,12 @@ struct KeyboardInput {
     uint8_t keyCode;
     
     // Adding operators for std::set
-    bool operator<(const Key& other) const {
+    bool operator<(const KeyboardInput& other) const {
         return isVirtualKey < other.isVirtualKey 
             || isExtended < other.isExtended
             || keyCode < other.keyCode;
     }
-    bool operator==(const Key& other) const {
+    bool operator==(const KeyboardInput& other) const {
         return isVirtualKey == other.isVirtualKey 
             && isExtended == other.isExtended
             && keyCode == other.keyCode;
