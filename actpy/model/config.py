@@ -12,9 +12,9 @@ FRAME_HEIGHT = 288
 CAPTURE_TARGET_FPS = 24
 
 # Packet Constants
-FRAME_PACKET_HEADER_SIZE = 32
+MAX_PRESSED_KEYS = 16 
+FRAME_PACKET_HEADER_SIZE = 80
 MAX_PACKET_SIZE = 65000 + FRAME_PACKET_HEADER_SIZE
-MAX_KEYS = 6 
 NO_KEY_VALUE = 0
 
 
@@ -64,15 +64,24 @@ VK_DOWN = 0x28
 KEY_JUMP = 0x1E # 'A'
 KEY_ATTACK = 0x20 # 'D'
 
-# Action Index -> IsVirtualKey, Key Code
+# Action Index -> isVirtualKey, isExtended, scanCode
 ACTION_TO_KEY_MAP = {
-    Actions.IDLE: (0, NO_KEY_VALUE),
-    Actions.ATTACK: (0, KEY_ATTACK),
-    # Actions.JUMP: (0, KEY_JUMP),
-    Actions.LEFT: (1, VK_LEFT),
-    Actions.RIGHT: (1, VK_RIGHT),
-    # Actions.DOWN: (1, VK_DOWN),
-    # Actions.UP: (1, VK_UP),
+    Actions.IDLE: (0, 0, NO_KEY_VALUE),
+    Actions.ATTACK: (0, 0, KEY_ATTACK),
+    # Actions.JUMP: (0, 0, KEY_JUMP),
+    Actions.LEFT: (1, 0, VK_LEFT),
+    Actions.RIGHT: (1, 0, VK_RIGHT),
+    # Actions.DOWN: (1, 0, VK_DOWN),
+    # Actions.UP: (1, 0, VK_UP),
+}
+KEY_TO_ACTION_MAP = {
+    NO_KEY_VALUE: Actions.IDLE,
+    KEY_ATTACK: Actions.ATTACK,
+    # KEY_JUMP: Actions.JUMP,
+    VK_LEFT: Actions.LEFT,
+    VK_RIGHT: Actions.RIGHT,
+    # VK_DOWN: Actions.DOWN,
+    # VK_UP: Actions.UP,
 }
 
 ACTION_NAMES = {
