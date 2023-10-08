@@ -12,18 +12,33 @@ from model.game_actor import game_actor_entry
 from model.model_collector import model_collector_entry
 from model.model_trainer import model_trainer_entry
 from model.model_experience_dump import model_experience_dump_entry
+from model.manual_control import manual_control_entry
 
 ## ==================================================================
 ## Keyboard Stop Condition (press ESC to stop)
 ## ==================================================================
 
-def start_keyboard_listener(stop_event):
+def start_keyboard_listener(stop_event, input_keys_queue):
     def on_key_press(key):
         if key == keyboard.Key.esc:
             stop_event.set()
             # post_quit_event()
             return False
-    with keyboard.Listener(on_press=on_key_press) as listener:
+        else:
+            try:
+                key = key.char # single-char keys
+            except:
+                key = key.name
+            input_keys_queue.put((key, 1))
+        return True 
+    def on_key_release(key):
+        try:
+            key = key.char # single-char keys
+        except:
+            key = key.name
+        input_keys_queue.put((key, 0))
+        return True
+    with keyboard.Listener(on_press=on_key_press, on_release=on_key_release) as listener:
         listener.join()
 
 
@@ -40,6 +55,7 @@ def main():
     # Initialize shared variables
     manager = Manager()
     stop_event = manager.Event() # signal to stop all threads and processes
+    input_keys_queue = manager.Queue()
     frame_queue = manager.Queue()
     action_queue = manager.Queue()
     display_queue = manager.Queue()
@@ -49,7 +65,7 @@ def main():
     # ------------------------------------------------------------------
 
     # Keyboard thread to stop the program
-    keyboard_thread = threading.Thread(target=start_keyboard_listener, args=(stop_event,))
+    keyboard_thread = threading.Thread(target=start_keyboard_listener, args=(stop_event, input_keys_queue))
     keyboard_thread.start()
 
     # Frame reader collects frames from the game and puts them in the queue
@@ -66,15 +82,19 @@ def main():
     display_process = Process(target=display_entry, args=(stop_event, display_queue))
     display_process.start()
 
-    # Model collector processes the frames to get experience and puts actions in the queue
-    # - Every now and then also updates the model weights from the trainer
-    model_collector = Process(target=model_collector_entry, args=(
-        stop_event, frame_queue, action_queue, experience_queue, weights_queue, display_queue))
-    model_collector.start()
+    # Manual control of the game
+    manual_control = Process(target=manual_control_entry, args=(stop_event, frame_queue, action_queue, display_queue, input_keys_queue))
+    manual_control.start()
 
-    # Model trainer updates the model weights from the collector, and signals the collector to update weights
-    model_trainer = Process(target=model_trainer_entry, args=(stop_event, experience_queue, weights_queue))
-    model_trainer.start()
+    # # Model collector processes the frames to get experience and puts actions in the queue
+    # # - Every now and then also updates the model weights from the trainer
+    # model_collector = Process(target=model_collector_entry, args=(
+    #     stop_event, frame_queue, action_queue, experience_queue, weights_queue, display_queue))
+    # model_collector.start()
+
+    # # Model trainer updates the model weights from the collector, and signals the collector to update weights
+    # model_trainer = Process(target=model_trainer_entry, args=(stop_event, experience_queue, weights_queue))
+    # model_trainer.start()
 
     # # Model experience dump saves the experience to disk
     # model_trainer = Process(target=model_experience_dump_entry, args=(stop_event, experience_queue))
@@ -87,8 +107,9 @@ def main():
     frame_reader.join()
     game_actor.join()
     display_process.join()
-    model_collector.join()
-    model_trainer.join()
+    manual_control.join()
+    # model_collector.join()
+    # model_trainer.join()
 
     # Close the connection
     s.close()

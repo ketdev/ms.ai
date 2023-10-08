@@ -12,8 +12,9 @@ FRAME_HEIGHT = 288
 CAPTURE_TARGET_FPS = 24
 
 # Packet Constants
+MAX_PORTALS = 8
 MAX_PRESSED_KEYS = 16 
-FRAME_PACKET_HEADER_SIZE = 80
+FRAME_PACKET_HEADER_SIZE = 120
 MAX_PACKET_SIZE = 65000 + FRAME_PACKET_HEADER_SIZE
 NO_KEY_VALUE = 0
 
@@ -47,13 +48,13 @@ MEMORY_SIZE = 1000
 
 class Actions:
     IDLE = 0
-    ATTACK = 1
-    # JUMP = 2
-    LEFT = 2
-    RIGHT = 3
-    # DOWN = 5
-    # UP = 6
-    _SIZE = 4
+    LEFT = 1
+    RIGHT = 2
+    DOWN = 3
+    UP = 4
+    ATTACK = 5
+    JUMP = 6
+    _SIZE = 7
 
 # Action Virtual key codes
 VK_LEFT = 0x25
@@ -67,31 +68,31 @@ KEY_ATTACK = 0x20 # 'D'
 # Action Index -> isVirtualKey, isExtended, scanCode
 ACTION_TO_KEY_MAP = {
     Actions.IDLE: (0, 0, NO_KEY_VALUE),
-    Actions.ATTACK: (0, 0, KEY_ATTACK),
-    # Actions.JUMP: (0, 0, KEY_JUMP),
     Actions.LEFT: (1, 0, VK_LEFT),
     Actions.RIGHT: (1, 0, VK_RIGHT),
-    # Actions.DOWN: (1, 0, VK_DOWN),
-    # Actions.UP: (1, 0, VK_UP),
+    Actions.DOWN: (1, 0, VK_DOWN),
+    Actions.UP: (1, 0, VK_UP),
+    Actions.ATTACK: (0, 0, KEY_ATTACK),
+    Actions.JUMP: (0, 0, KEY_JUMP),
 }
 KEY_TO_ACTION_MAP = {
     NO_KEY_VALUE: Actions.IDLE,
-    KEY_ATTACK: Actions.ATTACK,
-    # KEY_JUMP: Actions.JUMP,
     VK_LEFT: Actions.LEFT,
     VK_RIGHT: Actions.RIGHT,
-    # VK_DOWN: Actions.DOWN,
-    # VK_UP: Actions.UP,
+    VK_DOWN: Actions.DOWN,
+    VK_UP: Actions.UP,
+    KEY_ATTACK: Actions.ATTACK,
+    KEY_JUMP: Actions.JUMP,
 }
 
 ACTION_NAMES = {
     Actions.IDLE: "IDLE",
-    Actions.ATTACK: "ATTACK",
-    # Actions.JUMP: "JUMP",
     Actions.LEFT: "LEFT",
     Actions.RIGHT: "RIGHT",
-    # Actions.DOWN: "DOWN",
-    # Actions.UP: "UP",
+    Actions.DOWN: "DOWN",
+    Actions.UP: "UP",
+    Actions.ATTACK: "ATTACK",
+    Actions.JUMP: "JUMP",
 }
 
 ## ==================================================================

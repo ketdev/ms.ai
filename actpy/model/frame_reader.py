@@ -4,7 +4,7 @@ from struct import unpack
 import zlib
 
 from model.config import FRAME_WIDTH, FRAME_HEIGHT, FRAME_PACKET_HEADER_SIZE, MAX_PACKET_SIZE, \
-    MAX_PRESSED_KEYS, NO_KEY_VALUE, Actions, KEY_TO_ACTION_MAP
+    MAX_PORTALS, MAX_PRESSED_KEYS, NO_KEY_VALUE, Actions, KEY_TO_ACTION_MAP
 
 ## ==================================================================
 ## Utility Functions
@@ -49,11 +49,29 @@ def frame_reader_entry(sock, stop_event, frame_queue):
             raise Exception("Incomplete packet received")
 
         # Interpret header data
-        # float, float, float, uint64, (uint8 x 3) x MAX_PRESSED_KEYS, uint64
+        # - Metrics: hp:float, mp:float, exp:float
+        # - Minimap: width:uint16, height:uint16, playerX:uint16, playerY:uint16, portalX[MAX_PORTALS]:uint16, portalY[MAX_PORTALS]:uint16
+        # - Frame number: frame_number:uint64
+        # - Pressed keys: (isVirtualKey:uint8, isExtended:uint8, keyCode:uint8) x MAX_PRESSED_KEYS
+        # - Packet length: length:uint64
         packet_header = packet[:FRAME_PACKET_HEADER_SIZE]
-        hp, mp, exp, frame_number = unpack("fffQ", packet_header[:24])
-        keys = packet_header[24:24+MAX_PRESSED_KEYS*3]
-        length = unpack("Q", packet_header[24+MAX_PRESSED_KEYS*3:])[0]
+        hp, mp, exp = unpack("fff", packet_header[:12])
+        minimap = unpack("HHHH" + "HH"*MAX_PORTALS, packet_header[12:20+MAX_PORTALS*4]) 
+        # has 4 bytes padding to align to 8 bytes
+        frame_number = unpack("Q", packet_header[24+MAX_PORTALS*4:32+MAX_PORTALS*4])[0]
+        keys = packet_header[32+MAX_PORTALS*4:32+MAX_PORTALS*4+MAX_PRESSED_KEYS*3]
+        length = unpack("Q", packet_header[-8:])[0]
+
+        # Process minimap
+        mapDim = (minimap[0], minimap[1])
+        player = (minimap[2], minimap[3])
+        portals = []        
+        for i in range(MAX_PORTALS):
+            portalX = minimap[4+i]
+            portalY = minimap[4+i+MAX_PORTALS]
+            if portalX != 65535 and portalY != 65535:
+                portals.append((portalX, portalY))
+        
 
         # Process pressed keys
         pressed_keys = []
@@ -77,5 +95,5 @@ def frame_reader_entry(sock, stop_event, frame_queue):
         chunk8bit = _unpack_4bit_to_8bit(packet_data)
         frame = np.reshape(chunk8bit, (FRAME_HEIGHT, FRAME_WIDTH))
 
-        frame_queue.put((addr, frame_number, frame, (hp, mp, exp), action_state))
+        frame_queue.put((addr, frame_number, frame, (hp, mp, exp, mapDim, player, portals), action_state))
 

@@ -149,7 +149,7 @@ def display_entry(stop_event, display_queue):
     while not stop_event.is_set():
         try:
             # get the next frame to display
-            frames, (hp, mp, exp), action_states, action_vector, action_index = display_queue.get(timeout=0.1)
+            frames, (hp, mp, exp, mapDim, player, portals), action_states, action_vector, action_index = display_queue.get(timeout=0.1)
             # update the display
             update_display(screen, frames, hp, mp, exp, action_states, action_vector, action_index)
 

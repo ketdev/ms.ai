@@ -12,8 +12,8 @@ def _get_reward(prev_metrics, prev_action_index, next_metrics):
     if prev_metrics is None:
         return 0
 
-    prev_hp, prev_mp, prev_exp = prev_metrics
-    next_hp, next_mp, next_exp = next_metrics
+    prev_hp, prev_mp, prev_exp, prev_mapDim, prev_player, prev_portals = prev_metrics
+    next_hp, next_mp, next_exp, next_mapDim, next_player, next_portals = next_metrics
 
     # Reward when experience bar increases
     exp_reward = (next_exp - prev_exp) * 100
