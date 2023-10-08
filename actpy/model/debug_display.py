@@ -36,7 +36,7 @@ def post_quit_event():
 def close_display():
     pygame.quit()
 
-def update_display(screen, frames, hp, mp, exp, action_vector, action_index):
+def update_display(screen, frames, hp, mp, exp, action_states, action_vector, action_index):
 
     # clear the screen
     screen.fill((0, 0, 0))
@@ -100,7 +100,11 @@ def update_display(screen, frames, hp, mp, exp, action_vector, action_index):
 
         _draw_v_bar(screen, action_x, action_y, action_width, action_height, probabilities[i], color)
 
-        _draw_text(screen, ACTION_NAMES[i], action_x, action_y + action_height + 1, actions_text_size, (255, 255, 255))
+        text_color = (255, 255, 255)
+        if action_states[i] == 0:
+            text_color = (100, 100, 100)
+
+        _draw_text(screen, ACTION_NAMES[i], action_x, action_y + action_height + 1, actions_text_size, text_color)
 
     _display_flip()
 
@@ -145,9 +149,9 @@ def display_entry(stop_event, display_queue):
     while not stop_event.is_set():
         try:
             # get the next frame to display
-            frames, (hp, mp, exp), action_vector, action_index = display_queue.get(timeout=0.1)
+            frames, (hp, mp, exp), action_states, action_vector, action_index = display_queue.get(timeout=0.1)
             # update the display
-            update_display(screen, frames, hp, mp, exp, action_vector, action_index)
+            update_display(screen, frames, hp, mp, exp, action_states, action_vector, action_index)
 
             # check for quit event
             display_event_handle()

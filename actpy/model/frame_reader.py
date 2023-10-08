@@ -3,7 +3,8 @@ import numpy as np
 from struct import unpack
 import zlib
 
-from model.config import FRAME_WIDTH, FRAME_HEIGHT, FRAME_PACKET_HEADER_SIZE, MAX_PACKET_SIZE
+from model.config import FRAME_WIDTH, FRAME_HEIGHT, FRAME_PACKET_HEADER_SIZE, MAX_PACKET_SIZE, \
+    MAX_PRESSED_KEYS, NO_KEY_VALUE, Actions, KEY_TO_ACTION_MAP
 
 ## ==================================================================
 ## Utility Functions
@@ -24,6 +25,17 @@ def _unpack_4bit_to_8bit(packed_array):
         
     return unpacked_array
 
+def _keys_to_actions(pressed_keys):
+    actions = np.zeros(Actions._SIZE, dtype=np.uint8)
+    for i, (isVirtualKey, isExtended, scanCode) in enumerate(pressed_keys):
+        if scanCode == NO_KEY_VALUE:
+            continue
+        if scanCode in KEY_TO_ACTION_MAP:
+            actions[KEY_TO_ACTION_MAP[scanCode]] = 1
+        # else:
+        #     print("Unknown key: {}".format(scanCode))
+    return actions
+
 ## ==================================================================
 ## Frame Reader Entry
 ## ==================================================================
@@ -37,9 +49,22 @@ def frame_reader_entry(sock, stop_event, frame_queue):
             raise Exception("Incomplete packet received")
 
         # Interpret header data
-        # float, float, float, uint64, uint64
+        # float, float, float, uint64, (uint8 x 3) x MAX_PRESSED_KEYS, uint64
         packet_header = packet[:FRAME_PACKET_HEADER_SIZE]
-        hp, mp, exp, frame_number, length = unpack("fffQQ", packet_header)
+        hp, mp, exp, frame_number = unpack("fffQ", packet_header[:24])
+        keys = packet_header[24:24+MAX_PRESSED_KEYS*3]
+        length = unpack("Q", packet_header[24+MAX_PRESSED_KEYS*3:])[0]
+
+        # Process pressed keys
+        pressed_keys = []
+        for i in range(MAX_PRESSED_KEYS):
+            key = keys[i*3:i*3+3]
+            isVirtualKey, isExtended, scanCode = unpack("BBB", key)
+            if scanCode != NO_KEY_VALUE:
+                pressed_keys.append((isVirtualKey, isExtended, scanCode))
+
+        # translate actions to keys        
+        action_state = _keys_to_actions(pressed_keys)
 
         # Receive packet data
         packet_data = packet[FRAME_PACKET_HEADER_SIZE:]
@@ -52,10 +77,5 @@ def frame_reader_entry(sock, stop_event, frame_queue):
         chunk8bit = _unpack_4bit_to_8bit(packet_data)
         frame = np.reshape(chunk8bit, (FRAME_HEIGHT, FRAME_WIDTH))
 
-        frame_queue.put((addr, frame_number, frame, (hp, mp, exp)))
-
-        # # update screen
-        # _draw_grayscale_frame(screen, frame, 0, 0, FRAME_WIDTH * DISPLAY_SCALE, FRAME_HEIGHT * DISPLAY_SCALE)
-        # _display_flip()
-        
+        frame_queue.put((addr, frame_number, frame, (hp, mp, exp), action_state))
 

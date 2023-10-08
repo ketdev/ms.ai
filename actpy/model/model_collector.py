@@ -2,7 +2,7 @@ import numpy as np
 from collections import deque
 
 from model.config import FRAMES_PER_STEP, Actions, EPSILON, EPSILON_DECAY, EPSILON_MIN
-from model.nn import load_or_build_model, epsilon_greedy_policy
+from model.nn import load_or_build_model, epsilon_greedy_policy, load_or_build_model_from_old_weights
 
 ## ==================================================================
 ## Utilities
@@ -51,9 +51,10 @@ def model_collector_entry(stop_event, frame_queue, action_queue, experience_queu
     reward = 0
 
     # Current actions toggle state
-    actions_toggle = np.zeros(Actions._SIZE, dtype=np.uint8)
+    action_states = np.zeros(Actions._SIZE, dtype=np.uint8)
 
     prev_frames = None
+    prev_action_states_array = None
     prev_action_index = None
     prev_metrics = None
 
@@ -63,7 +64,7 @@ def model_collector_entry(stop_event, frame_queue, action_queue, experience_queu
 
         # Get the next frame
         try:
-            addr, frame_number, frame, metrics = frame_queue.get(timeout=1)
+            addr, frame_number, frame, metrics, frame_action_state = frame_queue.get(timeout=1)
         except:
             continue
 
@@ -73,8 +74,15 @@ def model_collector_entry(stop_event, frame_queue, action_queue, experience_queu
         reward += _get_reward(prev_metrics, prev_action_index, metrics)
         prev_metrics = metrics
 
+        # don't take actions from game, they are delayed
+
+        # # get last action states
+        # action_states.fill(0)
+        # for i, action_state in enumerate(frame_action_state):
+        #     action_states[i] = action_state
+
         # Send data to update display
-        display_queue.put((frames, metrics, action_vector, action_index))
+        display_queue.put((frames, metrics, action_states, action_vector, action_index))
 
         if frame_step >= FRAMES_PER_STEP:
 
@@ -83,31 +91,34 @@ def model_collector_entry(stop_event, frame_queue, action_queue, experience_queu
             frames_array = np.transpose(frames_array, (1, 2, 0))
             frames_array = np.reshape(frames_array, [1, frames_array.shape[0], frames_array.shape[1], frames_array.shape[2]])
 
+            action_states_array = np.reshape(action_states, [1, action_states.shape[0]])
+
             # Reward the model for previous action
             if reward != 0:
                 print(f"REWARD: {reward}")
 
             # Collect experience
             if prev_frames is not None:                
-                experience_queue.put((prev_frames, prev_action_index, reward, frames_array, False))
+                experience_queue.put((prev_frames, prev_action_states_array, prev_action_index, reward, frames_array, action_states_array, False))
 
             # Get action from DQN agent
-            action_vector = model.predict([frames_array, actions_toggle])[0]
+            action_vector = model.predict([frames_array, action_states_array])[0]
             action_index = epsilon_greedy_policy(action_vector, epsilon)            
             if epsilon > EPSILON_MIN:
                 epsilon *= EPSILON_DECAY
             else:
                 print("=== EPSILON MIN REACHED ===")
             
-            # Toggle action
-            actions_toggle[action_index] = 1 - actions_toggle[action_index]
+            # Update action states, toggle the action
+            action_states[action_index] = 1 - action_states[action_index]
 
             # Queue action for the game
-            action_queue.put((addr, actions_toggle))
+            action_queue.put((addr, action_states))
 
             # Update counters
             prev_frames = frames_array
             prev_action_index = action_index
+            prev_action_states_array = action_states_array
             frame_count += 1
             frame_step = 0
             reward = 0

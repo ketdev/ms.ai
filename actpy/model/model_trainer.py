@@ -4,7 +4,7 @@ import numpy as np
 from collections import deque
 
 from model.config import MEMORY_SIZE, BATCH_SIZE, GAMMA, UPDATE_TARGET_MODEL_EVERY, SAVE_WEIGHTS_EVERY
-from model.nn import load_or_build_model
+from model.nn import load_or_build_model, load_or_build_model_from_old_weights
 
 ## ==================================================================
 ## Model Trainer Entry
@@ -23,21 +23,21 @@ def model_trainer_entry(stop_event, experience_queue, weights_queue):
 
         # Add all pending experiences to memory
         for _ in range(experience_queue.qsize()):
-            prev_frames, prev_action_index, reward, frames_array, done = experience_queue.get()
-            memory.append((prev_frames, prev_action_index, reward, frames_array, done))
-
+            prev_frames, prev_action_states_array, prev_action_index, \
+                reward, frames_array, action_states_array, done = experience_queue.get()
+            memory.append((prev_frames, prev_action_states_array, prev_action_index, reward, frames_array, action_states_array, done))
 
         # Check if we can replay
         if len(memory) > BATCH_SIZE:
             minibatch = random.sample(memory, BATCH_SIZE)
-            for state, action, reward, next_state, done in minibatch:
+            for state, action_states, action, reward, next_state, next_action_states, done in minibatch:
                 target = reward
                 if not done:
                     # Use target_model for the Q-value prediction
-                    target = (reward + GAMMA * np.amax(target_model.predict(next_state)[0]))
-                target_f = model.predict(state)
+                    target = (reward + GAMMA * np.amax(target_model.predict([next_state, next_action_states])[0]))
+                target_f = model.predict([state, action_states])
                 target_f[0][action] = target
-                model.train_on_batch(state, target_f)
+                model.train_on_batch([state, action_states], target_f)
 
             # Increment the frame count
             train_count += 1
