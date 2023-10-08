@@ -5,6 +5,7 @@
 const int FRAME_WIDTH = 512; //640;
 const int FRAME_HEIGHT = 288; //360;
 
+const size_t MAX_PORTALS = 8;
 const int MAX_BUFFER_SIZE = 65000;
 const size_t MAX_PRESSED_KEYS = 16;
 const char NO_KEY_VALUE = 0;
@@ -13,6 +14,12 @@ struct Metrics {
     float hp;
     float mp;
     float exp;
+};
+
+struct Minimap {
+    uint16_t width, height;
+    uint16_t playerX, playerY;
+    uint16_t portalX[MAX_PORTALS], portalY[MAX_PORTALS];
 };
 
 struct KeyboardInput {
@@ -36,6 +43,7 @@ struct KeyboardInput {
 // From client to server
 struct FramePacket {
     Metrics metrics;
+    Minimap minimap;
     uint64_t frameNumber;
     
     KeyboardInput pressedKeys[MAX_PRESSED_KEYS];

@@ -11,15 +11,17 @@
 #include "network.hpp"
 #include "input.hpp"
 #include "metrics.hpp"
+#include "minimap.hpp"
 #include "protocol.hpp"
 #include "screen-capture.hpp"
 #include "compress.hpp"
+
 
 // ==================================================================
 // Constants
 // ==================================================================
 
-const char* const SERVER_IP = "10.0.0.6";
+const char* const SERVER_IP = "10.0.0.7";
 const int PORT = 12345;
 
 // const char* const TARGET_WINDOW_NAME = "*Untitled - Notepad";
@@ -146,8 +148,8 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w, int h)
         // Preallocated buffers
         cv::Mat capturedImage;
         cv::Mat resizedImage(FRAME_HEIGHT, FRAME_WIDTH, CV_8UC4);
-        cv::Mat grayscale(FRAME_HEIGHT, FRAME_WIDTH, CV_8UC1);
         std::vector<unsigned char> data4bit(FRAME_WIDTH * FRAME_HEIGHT / 2); // 4 bit
+        std::pair<cv::Point, cv::Point> minimap = std::make_pair(cv::Point(0,0), cv::Point(0,0));
 
         // FPS values
         int frameCount = 0;
@@ -168,18 +170,46 @@ void send_loop(int sock, sockaddr_in server_address, int x, int y, int w, int h)
             // Populate the packet with pressed keys
             fillPacketWithKeys(packet, pressedKeys);
 
-            // Resize the image
-            cv::resize(capturedImage, resizedImage, resizedImage.size());
- 
             // Convert BGRA to Grayscale
             cv::Mat grayscale;
-            cv::cvtColor(resizedImage, grayscale, cv::COLOR_BGRA2GRAY);
+            cv::cvtColor(capturedImage, grayscale, cv::COLOR_BGRA2GRAY);
 
+            // Find Minimap bounds
+            if (minimap.first.x == minimap.second.x) {
+                minimap = find_minimap(grayscale);                
+                std::cout << "Found Minimap at: (" 
+                    << minimap.first.x << "," << minimap.first.y << ") -> ("
+                    << minimap.second.x << "," << minimap.second.y << ")"
+                    << std::endl;
+            }
+
+            // Extract the ROI (Region of Interest) corresponding to the minimap
+            cv::Rect minimap_roi(minimap.first, minimap.second);
+            cv::Mat minimap_image = grayscale(minimap_roi);
+
+            // Find player and portal locations in minimap
+            auto player = find_player(minimap_image, minimap);
+            auto portals = find_portals(minimap_image, minimap);
+
+            // Fill minimap data
+            packet.minimap.width = minimap.second.x - minimap.first.x;
+            packet.minimap.height = minimap.second.y - minimap.first.y;
+            packet.minimap.playerX = player.x;
+            packet.minimap.playerY = player.y;
+            for (size_t i = 0; i < MAX_PORTALS; i++) {
+                packet.minimap.portalX[i] = i < portals.size() ? portals[i].x : -1;
+                packet.minimap.portalY[i] = i < portals.size() ? portals[i].y : -1;
+            }
+
+            // Resize the image
+            cv::resize(grayscale, resizedImage, resizedImage.size());
+ 
             // cv::imwrite("capture.bmp", upscaled8bit);
+            // cv::imwrite("minimap_debug.bmp", minimap_image);
             // exit(0);   
              
             // Convert to 4 bit
-            convertTo4BitBytes(grayscale, data4bit);  
+            convertTo4BitBytes(resizedImage, data4bit);  
 
             // Compress bytes
             uLongf length = MAX_BUFFER_SIZE;
@@ -294,6 +324,10 @@ int main() {
             std::cout << "Window not found!" << std::endl;
         }
 
+        // Sleep 1 second to allow to change window
+        // TODO: set window focus
+        std::this_thread::sleep_for(std::chrono::duration<double>(1.0));
+            
         auto rect = ScreenCapturer::GetClientRectangle(TARGET_WINDOW_NAME);
         int x = rect.left;
         int y = rect.top;

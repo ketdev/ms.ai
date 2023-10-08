@@ -8,7 +8,6 @@
 
 #include "protocol.hpp"
 
-
 struct MetricDimension {
     std::string name;
     int bottom_margin;
