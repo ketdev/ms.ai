@@ -67,7 +67,7 @@ int main() {
         std::cout << w << std::endl;
         std::cout << h << std::endl;
 
-
+        std::thread keyboard_thread(start_keyboard_listener);
         ScreenCapturer capturer(x, y, w, h);
 
         // Preallocated buffers
