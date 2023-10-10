@@ -1,0 +1,6 @@
+player
+enemy
+item
+platform
+rope
+portal

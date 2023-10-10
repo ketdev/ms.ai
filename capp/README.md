@@ -28,3 +28,18 @@ My PC that runs MapleStory is not the best one, and training both the model and 
 First i tried TCP, but it was too slow, I want near real-time so that the AI can perform the actions and have it affect the game, playing with lag makes it really hard even for a human.
 
 Then i went for UDP, but the problem with UDP is the packet losses and out of order.
+
+...
+
+
+The AI just walked around aimlessly not really knowing what to do
+
+
+# Enter YOLOv5 Object detection
+
+recording frames for training
+labeling with LabelImg
+```
+pip3 install labelImg
+labelImg
+```

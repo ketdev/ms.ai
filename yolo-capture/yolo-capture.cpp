@@ -9,7 +9,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "../capp/screen-capture.hpp"
-
+#include "yolov5.hpp"
 
 // ==================================================================
 // Constants
@@ -19,6 +19,11 @@
 const char* const TARGET_WINDOW_NAME = "MapleStory";
 
 const int CAPTURE_TARGET_FPS = 6;
+
+const char* const CLASSES_FILENAME = "./model/classes.txt";
+const char* const MODEL_FILENAME = "./model/msai_yolov5s.onnx";
+
+const std::vector<cv::Scalar> colors = {cv::Scalar(255, 255, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 255, 255), cv::Scalar(255, 0, 0)};
 
 // ==================================================================
 // Global Variables
@@ -67,6 +72,13 @@ int main() {
         std::cout << w << std::endl;
         std::cout << h << std::endl;
 
+        // load yolov5 
+        std::vector<std::string> class_list = load_class_list(CLASSES_FILENAME);
+
+        cv::dnn::Net net;
+        bool is_cuda = false;
+        load_net(MODEL_FILENAME, net, is_cuda);
+
         std::thread keyboard_thread(start_keyboard_listener);
         ScreenCapturer capturer(x, y, w, h);
 
@@ -85,8 +97,51 @@ int main() {
 
             // Capture frame
             capturer.capture(capturedImage);
-            std::string filename = "frame_" + std::to_string(frameCount) + ".bmp";
-            cv::imwrite(filename.c_str(), capturedImage);
+
+            // Perform detection
+            std::vector<Detection> output;
+            detect(capturedImage, net, output, class_list);
+
+            // Save if there is a detection with low confidence
+            bool save = false;
+            for (int i = 0; i < output.size(); ++i) {
+                auto detection = output[i];
+                if (detection.confidence < CONFIDENCE_THRESHOLD) {
+                    save = true;
+                    break;
+                }
+            }
+
+            if (save) {                
+                std::string frame_filename = "frame_" + std::to_string(frameCount) + ".bmp";
+                std::string output_filename = "frame_" + std::to_string(frameCount) + ".txt";
+
+                // Write frame to file
+                cv::imwrite(frame_filename.c_str(), capturedImage);
+
+                // Write detection to file
+                std::ofstream output_file;
+                output_file.open(output_filename.c_str());
+                for (int i = 0; i < output.size(); ++i) {
+                    auto detection = output[i];
+                    auto box = detection.box;
+                    auto classId = detection.class_id;
+                    output_file << class_list[classId] << " " << box.x << " " << box.y << " " << box.width << " " << box.height << std::endl;
+                }
+            }            
+
+            // Debug show
+            for (int i = 0; i < output.size(); ++i) {
+                auto detection = output[i];
+                auto box = detection.box;
+                auto classId = detection.class_id;
+                const auto color = colors[classId % colors.size()];
+                cv::rectangle(capturedImage, box, color, 3);
+
+                cv::rectangle(capturedImage, cv::Point(box.x, box.y - 20), cv::Point(box.x + box.width, box.y), color, cv::FILLED);
+                cv::putText(capturedImage, class_list[classId].c_str(), cv::Point(box.x, box.y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
+            }
+            cv::imshow("output", capturedImage);
 
             // Wait until next frame
             auto frameEndTime = std::chrono::high_resolution_clock::now();
