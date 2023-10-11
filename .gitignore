@@ -6,6 +6,10 @@
 .DS_Store
 
 yolo-training
+third_party
+
+Debug/
+x64/
 
 .build/
 build/
